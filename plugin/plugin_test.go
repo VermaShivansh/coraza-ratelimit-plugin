@@ -9,16 +9,10 @@ import (
 	"github.com/corazawaf/coraza/v3"
 )
 
-func TestExec(t *testing.T) {
+func TestRatelimit(t *testing.T) {
 	waf, err := coraza.NewWAF(
-		// coraza.NewWAFConfig().
-		// 	WithDirectives(`
-		// 	SecRuleEngine ON
-		// 	SecDebugLog /dev/stdout
-		// 	SecDebugLogLevel 9
-		// 	SecRule RESPONSE_STATUS "@streq 200" "phase:3,id:123,exec:./testdata/hello-world.wasm"
-		// `),
-		coraza.NewWAFConfig().WithDirectives(`SecAction "id:1,ratelimit"`),
+		coraza.NewWAFConfig().
+			WithDirectivesFromFile("../default.conf"),
 	)
 	require.NoError(t, err)
 
