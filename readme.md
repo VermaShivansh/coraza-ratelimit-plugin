@@ -1,7 +1,5 @@
 <h1>Coraza ratelimit plugin</h1>
-<br/>
 <hr/>
-<br/>
 <h3><bold>Examples:- </bold>  </h3> 
 <br/>
 <ul>
