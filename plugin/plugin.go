@@ -3,11 +3,13 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/corazawaf/coraza/v3/debuglog"
 	"github.com/corazawaf/coraza/v3/experimental/plugins"
+	"github.com/corazawaf/coraza/v3/macro"
 	"github.com/corazawaf/coraza/v3/rules"
 	"github.com/corazawaf/coraza/v3/types"
 )
@@ -28,13 +30,20 @@ type Ratelimit struct {
 	MaxEvents     int // no of requests allowed
 	Window        int // no of maxEvents in inteval : in seconds
 	SweepInterval int // cleans memory at interval : in seconds .
+	zoneMacro     macro.Macro
 	interrupt     *types.Interruption
 	mutex         *sync.Mutex
 }
 
 func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	fmt.Println("Ratelimit plugin initiated", opts)
-	// var err error
+	var err error
+
+	// initiating macro for retrieving name in future
+	e.zoneMacro, err = macro.NewMacro(strings.Split(opts, "=")[1])
+	if err != nil {
+		fmt.Println(err.Error())
+	}
 
 	e.Zones = make(map[string]ZoneEvents)
 
@@ -78,11 +87,6 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 		}
 	}()
 
-	// m, err := macro.NewMacro(opts)
-	// if err != nil {
-	// 	return err
-	// }
-	// fmt.Println("this", m)
 	return nil
 }
 
@@ -100,7 +104,11 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 	corazaLogger.Debug().Msg("Evaluating ratelimit plugin")
 
 	//extract zone
-	zone_name := "fixed_for_now"
+	zone_name := e.zoneMacro.Expand(tx)
+	if zone_name == "" {
+		zone_name = "misc" // if in case of empty string or some kind of issue in macro expansion we send all the requests to misc name
+	}
+
 	currentTimeInSecond := int(time.Now().Unix())
 
 	e.mutex.Lock()
@@ -125,12 +133,15 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		e.Zones[zone_name][currentTimeInSecond]++
 		fmt.Println(e.Zones)
 	} else {
+		// implement logic after ratelimit exceeded
 		fmt.Println("Ratelimit exceeded")
 		corazaLogger.Debug().Msg("Ratelimit exceeded")
 		tx.Interrupt(e.interrupt)
 
 		return
 	}
+
+	prettyPrint(tx.Variables().Rule())
 
 	// get information about current matching SecRule
 	// prettyPrint(tx.Collection(variables.MatchedVar).FindAll())
@@ -143,7 +154,6 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 	// 	prettyPrint(map[string]interface{}{"variable": col.Name(), "col": col.FindAll()})
 	// 	return true
 	// })
-
 }
 
 func (e *Ratelimit) Type() rules.ActionType {
