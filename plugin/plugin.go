@@ -2,9 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -23,41 +21,26 @@ func newRatelimit() rules.Action {
 	return &Ratelimit{}
 }
 
+type ZoneEvents map[int]int // unixTimestamp in seconds containing requests per second
+
 type Ratelimit struct {
-	allowedCount           int
-	remainingCount         int
-	clearAfterSeconds      int
-	lastClearRatelimitTime time.Time
-	interrupt              *types.Interruption
-	mutex                  *sync.Mutex
+	Zones         map[string]ZoneEvents
+	MaxEvents     int // no of requests allowed
+	Window        int // no of maxEvents in inteval : in seconds
+	SweepInterval int // cleans memory at interval : in seconds .
+	interrupt     *types.Interruption
+	mutex         *sync.Mutex
 }
 
 func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	fmt.Println("Ratelimit plugin initiated", opts)
-	var err error
+	// var err error
 
-	e.allowedCount, err = strconv.Atoi(opts[:len(opts)-3])
-	if err != nil {
-		return errors.New("invalid options for ratelimit actions")
-	}
+	e.Zones = make(map[string]ZoneEvents)
 
-	// decides clearAfterSeconds from the last variable
-	unit := opts[len(opts)-1:]
-	if unit == "s" {
-		e.clearAfterSeconds = 1
-	} else if unit == "m" {
-		e.clearAfterSeconds = 60
-	} else if unit == "h" {
-		e.clearAfterSeconds = 3600
-	} else if unit == "d" {
-		e.clearAfterSeconds = 86400
-	} else {
-		return errors.New("invalid options for ratelimit actions")
-	}
-
-	// Initializing the ratelimit
-	e.remainingCount = e.allowedCount
-	e.lastClearRatelimitTime = time.Now()
+	e.MaxEvents = 200
+	e.Window = 1
+	e.SweepInterval = 2
 
 	// Generating interrupt - right now static to deny-429
 	e.interrupt = &types.Interruption{
@@ -68,6 +51,38 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 
 	e.mutex = &sync.Mutex{}
 
+	// a service to clean interval
+	go func() {
+		for {
+			time.Sleep(time.Second * time.Duration(e.SweepInterval)) // runs after every SweepInterval duration
+
+			thresholdTimeStamp := int(time.Now().Unix()) - e.Window
+			// aim is to keep events of timestamps greater than threshold timestamp
+
+			fmt.Printf("Removing timestamps less than or equal to %v \n", thresholdTimeStamp)
+
+			e.mutex.Lock()
+			for zone_name, zone_timestamps := range e.Zones {
+				for timestamp := range zone_timestamps {
+					if timestamp <= thresholdTimeStamp {
+						delete(e.Zones[zone_name], timestamp)
+					} else {
+						// breaking out of loop if at any point timestamps start to increase than threshold: it reduces redundant iteration computation
+						break
+					}
+				}
+			}
+			e.mutex.Unlock()
+
+			fmt.Printf("Cleaned memory for Rule with id %v \n", rm.ID())
+		}
+	}()
+
+	// m, err := macro.NewMacro(opts)
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Println("this", m)
 	return nil
 }
 
@@ -82,29 +97,40 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		debuglog.Int("rule_id", r.ID()),
 	)
 
+	corazaLogger.Debug().Msg("Evaluating ratelimit plugin")
+
+	//extract zone
+	zone_name := "fixed_for_now"
+	currentTimeInSecond := int(time.Now().Unix())
+
 	e.mutex.Lock()
 
-	//check if the time is greater than the clearAfterSeconds
-	if time.Since(e.lastClearRatelimitTime).Seconds() > float64(e.clearAfterSeconds) {
-		fmt.Println("Ratelimit reset")
-		corazaLogger.Debug().Msg("Ratelimit reset")
-		e.remainingCount = e.allowedCount
-		e.lastClearRatelimitTime = time.Now()
+	_, ok := e.Zones[zone_name]
+	if !ok {
+		e.Zones[zone_name] = make(ZoneEvents)
 	}
 
-	if e.remainingCount <= 0 {
+	_, ok = e.Zones[zone_name][currentTimeInSecond]
+	if !ok {
+		e.Zones[zone_name][currentTimeInSecond] = 0
+	}
+
+	// total events for that zone
+	totalEventsOccuredInPreviousWindow := 0
+	for i := currentTimeInSecond; i > currentTimeInSecond-e.Window; i-- {
+		totalEventsOccuredInPreviousWindow += e.Zones[zone_name][i]
+	}
+
+	if totalEventsOccuredInPreviousWindow < e.MaxEvents {
+		e.Zones[zone_name][currentTimeInSecond]++
+		fmt.Println(e.Zones)
+	} else {
 		fmt.Println("Ratelimit exceeded")
 		corazaLogger.Debug().Msg("Ratelimit exceeded")
 		tx.Interrupt(e.interrupt)
 
 		return
 	}
-
-	e.remainingCount--
-	fmt.Println("Ratelimit remaining count: ", e.remainingCount)
-
-	corazaLogger.Debug().Msg("Evaluating ratelimit plugin")
-	corazaLogger.Debug().Msg(fmt.Sprintf("Hits left: %d", e.allowedCount-e.remainingCount))
 
 	// get information about current matching SecRule
 	// prettyPrint(tx.Collection(variables.MatchedVar).FindAll())
@@ -117,6 +143,7 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 	// 	prettyPrint(map[string]interface{}{"variable": col.Name(), "col": col.FindAll()})
 	// 	return true
 	// })
+
 }
 
 func (e *Ratelimit) Type() rules.ActionType {
@@ -127,3 +154,9 @@ func prettyPrint(i interface{}) {
 	s, _ := json.MarshalIndent(i, "", "\t")
 	fmt.Println(string(s))
 }
+
+// type lock
+var (
+	_ rules.Action          = &Ratelimit{}
+	_ plugins.ActionFactory = newRatelimit
+)

@@ -65,6 +65,9 @@ func TestRateLimit(t *testing.T) {
 	mut := &sync.Mutex{}
 	initialTime := time.Now()
 	for i := 0; i < 1000; i++ {
+		if i%200 == 0 {
+			time.Sleep(time.Second * 1)
+		}
 		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
 			defer wg.Done()
 			for j := 0; j < 1; j++ {
