@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/corazawaf/coraza/v3/debuglog"
@@ -28,13 +29,14 @@ type Ratelimit struct {
 	clearAfterSeconds      int
 	lastClearRatelimitTime time.Time
 	interrupt              *types.Interruption
+	mutex                  *sync.Mutex
 }
 
 func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	fmt.Println("Ratelimit plugin initiated", opts)
 	var err error
 
-	e.allowedCount, err = strconv.Atoi(opts[:len(opts)-1])
+	e.allowedCount, err = strconv.Atoi(opts[:len(opts)-3])
 	if err != nil {
 		return errors.New("invalid options for ratelimit actions")
 	}
@@ -64,6 +66,8 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 		Status: 429,
 	}
 
+	e.mutex = &sync.Mutex{}
+
 	return nil
 }
 
@@ -71,11 +75,14 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 // Print statements will be removed before finalizing
 
 func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
+	defer e.mutex.Unlock()
 
 	corazaLogger := tx.DebugLogger().With(
 		debuglog.Str("action", "ratelimit"),
 		debuglog.Int("rule_id", r.ID()),
 	)
+
+	e.mutex.Lock()
 
 	//check if the time is greater than the clearAfterSeconds
 	if time.Since(e.lastClearRatelimitTime).Seconds() > float64(e.clearAfterSeconds) {
@@ -94,11 +101,10 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 	}
 
 	e.remainingCount--
+	fmt.Println("Ratelimit remaining count: ", e.remainingCount)
 
 	corazaLogger.Debug().Msg("Evaluating ratelimit plugin")
 	corazaLogger.Debug().Msg(fmt.Sprintf("Hits left: %d", e.allowedCount-e.remainingCount))
-
-	fmt.Println("Ratelimit remaining count: ", e.remainingCount)
 
 	// get information about current matching SecRule
 	// prettyPrint(tx.Collection(variables.MatchedVar).FindAll())
