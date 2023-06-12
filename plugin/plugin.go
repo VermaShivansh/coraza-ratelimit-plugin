@@ -62,10 +62,11 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	e.mutex = &sync.Mutex{}
 
 	// a service to clean interval
+	ticker := time.NewTicker(time.Second * time.Duration(e.SweepInterval))
+
 	go func() {
 		for {
-			time.Sleep(time.Second * time.Duration(e.SweepInterval)) // runs after every SweepInterval duration
-
+			<-ticker.C
 			thresholdTimeStamp := time.Now().Unix() - e.Window
 			// aim is to keep events of timestamps greater than threshold timestamp
 
