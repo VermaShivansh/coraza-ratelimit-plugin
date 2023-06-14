@@ -72,7 +72,7 @@ func TestLogicOfRateLimit(t *testing.T) {
 		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
 			defer wg.Done()
 			for j := 0; j < 1; j++ {
-				resp, err := http.Get("http://localhost:8090?id=2")
+				resp, err := http.Get("http://localhost:8090?id=1")
 				if err != nil {
 					fmt.Printf("Error: %s", err)
 					// t.Errorf("Error in %v, expected: %v, got: %v", test.url, test.expectedStatusCode, err.Error())
@@ -101,7 +101,7 @@ func TestStressOfRateLimit(t *testing.T) {
 		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
 			defer wg.Done()
 			for j := 0; j < 1; j++ {
-				resp, err := http.Get("http://localhost:8090?id=2")
+				resp, err := http.Get("http://localhost:8090?id=1")
 				if err != nil {
 					fmt.Printf("Error: %s", err)
 					// t.Errorf("Error in %v, expected: %v, got: %v", test.url, test.expectedStatusCode, err.Error())

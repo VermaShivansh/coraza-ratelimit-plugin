@@ -23,15 +23,15 @@ func newRatelimit() rules.Action {
 	return &Ratelimit{}
 }
 
-type ZoneEvents map[int]int // unixTimestamp in seconds containing requests per second
+type ZoneEvents map[int64]int64 // unixTimestamp in seconds containing requests per second
 
 type Ratelimit struct {
 	Zones         map[string]ZoneEvents
-	MaxEvents     int // no of requests allowed
-	Window        int // no of maxEvents in inteval : in seconds
-	SweepInterval int // cleans memory at interval : in seconds .
+	MaxEvents     int64 // no of requests allowed
+	Window        int64 // no of maxEvents in inteval : in seconds
+	SweepInterval int64 // cleans memory at interval : in seconds .
 	zoneMacro     macro.Macro
-	interrupt     *types.Interruption
+	interrupt     types.Interruption
 	mutex         *sync.Mutex
 }
 
@@ -43,6 +43,7 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	e.zoneMacro, err = macro.NewMacro(strings.Split(opts, "=")[1])
 	if err != nil {
 		fmt.Println(err.Error())
+		return err
 	}
 
 	e.Zones = make(map[string]ZoneEvents)
@@ -52,7 +53,7 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	e.SweepInterval = 2
 
 	// Generating interrupt - right now static to deny-429
-	e.interrupt = &types.Interruption{
+	e.interrupt = types.Interruption{
 		RuleID: rm.ID(),
 		Action: "deny",
 		Status: 429,
@@ -61,11 +62,12 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	e.mutex = &sync.Mutex{}
 
 	// a service to clean interval
+	ticker := time.NewTicker(time.Second * time.Duration(e.SweepInterval))
+
 	go func() {
 		for {
-			time.Sleep(time.Second * time.Duration(e.SweepInterval)) // runs after every SweepInterval duration
-
-			thresholdTimeStamp := int(time.Now().Unix()) - e.Window
+			<-ticker.C
+			thresholdTimeStamp := time.Now().Unix() - e.Window
 			// aim is to keep events of timestamps greater than threshold timestamp
 
 			fmt.Printf("Removing timestamps less than or equal to %v \n", thresholdTimeStamp)
@@ -94,7 +96,6 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 // Print statements will be removed before finalizing
 
 func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
-	defer e.mutex.Unlock()
 
 	corazaLogger := tx.DebugLogger().With(
 		debuglog.Str("action", "ratelimit"),
@@ -109,9 +110,10 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		zone_name = "misc" // if in case of empty string or some kind of issue in macro expansion we send all the requests to misc name
 	}
 
-	currentTimeInSecond := int(time.Now().Unix())
+	currentTimeInSecond := time.Now().Unix()
 
 	e.mutex.Lock()
+	defer e.mutex.Unlock()
 
 	_, ok := e.Zones[zone_name]
 	if !ok {
@@ -124,7 +126,7 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 	}
 
 	// total events for that zone
-	totalEventsOccuredInPreviousWindow := 0
+	var totalEventsOccuredInPreviousWindow int64 = 0
 	for i := currentTimeInSecond; i > currentTimeInSecond-e.Window; i-- {
 		totalEventsOccuredInPreviousWindow += e.Zones[zone_name][i]
 	}
@@ -136,7 +138,7 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		// implement logic after ratelimit exceeded
 		fmt.Println("Ratelimit exceeded")
 		corazaLogger.Debug().Msg("Ratelimit exceeded")
-		tx.Interrupt(e.interrupt)
+		tx.Interrupt(&e.interrupt)
 
 		return
 	}
