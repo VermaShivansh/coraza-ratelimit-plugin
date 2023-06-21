@@ -20,7 +20,9 @@ func TestLogicOfRateLimit(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	svr := helpers.NewHttpTestWafServer()
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}, pass, status:200"`
+
+	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
 
 	requestURL := fmt.Sprintf("%v?id=1", svr.URL)
@@ -64,7 +66,9 @@ func TestStressOfRateLimit(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	svr := helpers.NewHttpTestWafServer()
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}, pass, status:200"`
+
+	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
 
 	requestURL := fmt.Sprintf("%v?id=1", svr.URL)
