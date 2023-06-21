@@ -36,7 +36,10 @@ func NewHttpTestWafServer() *httptest.Server {
 		resBody := "Transaction not disrupted."
 
 		// The server generates the response
-		w.Write([]byte(resBody))
+		_, err := w.Write([]byte(resBody))
+		if err != nil {
+			log.Fatal("Error in writing response body to header")
+		}
 	})))
 
 	return svr
