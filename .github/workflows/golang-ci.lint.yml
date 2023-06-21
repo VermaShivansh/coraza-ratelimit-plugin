@@ -1,4 +1,4 @@
-name: golangci-lint
+name: pr-to-prod-workflow
 on:
   pull_request:
     branches:
@@ -45,3 +45,5 @@ jobs:
 
           # Optional:The mode to install golangci-lint. It can be 'binary' or 'goinstall'.
           # install-mode: "goinstall"
+      - name: ci-system-testing
+        run: "go run mage.go test"
