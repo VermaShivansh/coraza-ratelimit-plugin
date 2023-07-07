@@ -11,6 +11,35 @@ import (
 	"github.com/vermaShivansh/coraza-ratelimit-plugin/helpers"
 )
 
+// tests ratelimit configuration
+func TestConfigurationParser(t *testing.T) {
+
+	// This is a complete Secrule
+	// SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&events=200&window=1&interval=1&action=drop&status=429, pass, status:200"
+	// we will only be testing parseConfig method using the value sent in ratelimit action
+	testCases := ConfigTestCases
+
+	failedTestCases := []ConfigTestCase{}
+
+	ratelimit := &Ratelimit{}
+
+	for _, testCase := range testCases {
+		err := ratelimit.parseConfig(testCase.Config)
+		if (err != nil && !testCase.Expected) || (err == nil && testCase.Expected) {
+			continue
+		} else {
+			failedTestCases = append(failedTestCases, testCase)
+		}
+	}
+
+	if len(failedTestCases) != 0 {
+		t.Errorf("Following testcases failed %v", failedTestCases)
+		t.FailNow()
+	}
+
+	fmt.Println("Ratelimit configuration check passed")
+}
+
 // sends 200 requests every second to server. With Config maxEvents=200, sweepInterval=2, window=1 // this should work perfectly fine
 func TestLogicOfRateLimit(t *testing.T) {
 	wg := &sync.WaitGroup{}
@@ -20,7 +49,7 @@ func TestLogicOfRateLimit(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS:host}&events=200&window=1&interval=1&action=drop&status=429, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&events=200&window=1&interval=2&action=deny&status=403, pass, status:200"`
 
 	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
@@ -66,7 +95,7 @@ func TestStressOfRateLimit(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&events=0&window=1&interval=2&action=redirect&status=301, pass, status:200"`
 
 	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()

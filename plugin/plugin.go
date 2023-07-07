@@ -31,9 +31,9 @@ type Ratelimit struct {
 	MaxEvents     int64 // no of requests allowed
 	Window        int64 // no of maxEvents in inteval : in seconds
 	SweepInterval int64 // cleans memory at interval : in seconds .
-	zoneMacro     macro.Macro
-	action        string
-	status        int // because coraza accepts 'int' in its interrupt struct
+	ZoneMacro     macro.Macro
+	Action        string
+	Status        int // because coraza accepts 'int' in its interrupt struct
 	mutex         *sync.Mutex
 }
 
@@ -45,8 +45,8 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 
 	//default values
 	e.SweepInterval = 5
-	e.action = "drop"
-	e.status = 429
+	e.Action = "drop"
+	e.Status = 429
 
 	//parses the configuration and loads values to the struct whilst checking required and valid values
 	if err = e.parseConfig(opts); err != nil {
@@ -75,7 +75,7 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 	corazaLogger.Debug().Msg("Evaluating ratelimit plugin")
 
 	//extract zone
-	zone_name := e.zoneMacro.Expand(tx)
+	zone_name := e.ZoneMacro.Expand(tx)
 	if zone_name == "" {
 		zone_name = "misc" // if in case of empty string or some kind of issue in macro expansion we send all the requests to misc name
 	}
@@ -110,8 +110,8 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		corazaLogger.Debug().Msg("Ratelimit exceeded")
 		tx.Interrupt(&types.Interruption{
 			RuleID: r.ID(),
-			Status: e.status,
-			Action: e.action,
+			Status: e.Status,
+			Action: e.Action,
 		})
 
 		return
@@ -156,23 +156,20 @@ func (e *Ratelimit) parseConfig(config string) error {
 
 		key := pair[0]
 		value := pair[1]
-		fmt.Println(key, value)
+
 		switch key {
 		case "zone":
-			if e.zoneMacro, err = macro.NewMacro(value); err != nil {
-				fmt.Println(err.Error())
+			if e.ZoneMacro, err = macro.NewMacro(value); err != nil {
 				return fmt.Errorf("invalid macro name")
 			}
 			requiredValues[key] = true
 		case "events":
 			if e.MaxEvents, err = strconv.ParseInt(value, 10, 64); err != nil {
-				fmt.Println(err.Error())
 				return fmt.Errorf("invalid integer value for events")
 			}
 			requiredValues[key] = true
 		case "window":
 			if e.Window, err = strconv.ParseInt(value, 10, 64); err != nil {
-				fmt.Println(err.Error())
 				return fmt.Errorf("invalid integer value for window")
 			}
 			if e.Window == 0 {
@@ -181,7 +178,6 @@ func (e *Ratelimit) parseConfig(config string) error {
 			requiredValues[key] = true
 		case "interval":
 			if e.SweepInterval, err = strconv.ParseInt(value, 10, 64); err != nil {
-				fmt.Println(err.Error())
 				return fmt.Errorf("invalid integer value for interval")
 			}
 			if e.SweepInterval == 0 {
@@ -189,15 +185,15 @@ func (e *Ratelimit) parseConfig(config string) error {
 			}
 		case "action":
 			if value == "drop" || value == "deny" || value == "redirect" {
-				e.action = value
+				e.Action = value
 			} else {
 				return fmt.Errorf("action type should be one of 'drop', 'deny', 'redirect'")
 			}
 		case "status":
-			if e.status, err = strconv.Atoi(value); err != nil {
+			if e.Status, err = strconv.Atoi(value); err != nil {
 				return fmt.Errorf("invalid status integer value")
 			}
-			if e.status < 0 || e.status > 500 {
+			if e.Status < 0 || e.Status > 500 {
 				return fmt.Errorf("status should be in range 0-500")
 			}
 		default:

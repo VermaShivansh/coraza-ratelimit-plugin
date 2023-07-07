@@ -42,7 +42,12 @@ func Test() error {
 		return err
 	}
 
-	log.Println("Logic Testing")
+	log.Println("Ratelimit Configuration Parser Testing...")
+	if err := sh.RunV("go", "test", "-run", "^TestConfigurationParser$", "./plugin", "-v"); err != nil {
+		return err
+	}
+
+	log.Println("Logic Testing...")
 	if err := sh.RunV("go", "test", "-run", "^TestLogicOfRateLimit$", "./plugin", "-v"); err != nil {
 		return err
 	}
