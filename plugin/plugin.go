@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,7 +39,7 @@ type Ratelimit struct {
 }
 
 func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
-	fmt.Println("Ratelimit plugin initiated", opts)
+	log.Println("Initiating Ratelimit plugin with config ", opts)
 	var err error
 
 	e.Zones = make(map[string]ZoneEvents)
@@ -50,7 +51,7 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 
 	//parses the configuration and loads values to the struct whilst checking required and valid values
 	if err = e.parseConfig(opts); err != nil {
-		return err
+		return fmt.Errorf("Ratelimit config error for ruleID= %v ; errorMsg= %v", rm.ID(), err)
 	}
 
 	e.mutex = &sync.Mutex{}
@@ -103,10 +104,10 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 
 	if totalEventsOccuredInPreviousWindow < e.MaxEvents {
 		e.Zones[zone_name][currentTimeInSecond]++
-		fmt.Println(e.Zones)
+		log.Println(e.Zones)
 	} else {
 		// implement logic after ratelimit exceeded
-		fmt.Println("Ratelimit exceeded")
+		log.Println("Ratelimit exceeded")
 		corazaLogger.Debug().Msg("Ratelimit exceeded")
 		tx.Interrupt(&types.Interruption{
 			RuleID: r.ID(),

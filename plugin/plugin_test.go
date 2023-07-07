@@ -95,7 +95,7 @@ func TestStressOfRateLimit(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&events=0&window=1&interval=2&action=redirect&status=301, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&events=300&window=1&interval=2&action=deny&status=401, pass, status:200"`
 
 	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
