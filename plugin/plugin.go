@@ -213,7 +213,7 @@ func (e *Ratelimit) parseConfig(config string) error {
 }
 
 // a service to clean interval
-func (e *Ratelimit) cleanService(ruleID int) error {
+func (e *Ratelimit) cleanService(ruleID int) {
 	ticker := time.NewTicker(time.Second * time.Duration(e.SweepInterval))
 	for {
 		<-ticker.C
