@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,7 +32,8 @@ type Ratelimit struct {
 	Window        int64 // no of maxEvents in inteval : in seconds
 	SweepInterval int64 // cleans memory at interval : in seconds .
 	zoneMacro     macro.Macro
-	interrupt     types.Interruption
+	action        string
+	status        int // because coraza accepts 'int' in its interrupt struct
 	mutex         *sync.Mutex
 }
 
@@ -39,55 +41,23 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	fmt.Println("Ratelimit plugin initiated", opts)
 	var err error
 
-	// initiating macro for retrieving name in future
-	e.zoneMacro, err = macro.NewMacro(strings.Split(opts, "=")[1])
-	if err != nil {
-		fmt.Println(err.Error())
-		return err
-	}
-
 	e.Zones = make(map[string]ZoneEvents)
 
-	e.MaxEvents = 200
-	e.Window = 1
-	e.SweepInterval = 2
+	//default values
+	e.SweepInterval = 5
+	e.action = "drop"
+	e.status = 429
 
-	// Generating interrupt - right now static to deny-429
-	e.interrupt = types.Interruption{
-		RuleID: rm.ID(),
-		Action: "deny",
-		Status: 429,
+	//parses the configuration and loads values to the struct whilst checking required and valid values
+	if err = e.parseConfig(opts); err != nil {
+		return err
 	}
 
 	e.mutex = &sync.Mutex{}
 
-	// a service to clean interval
-	ticker := time.NewTicker(time.Second * time.Duration(e.SweepInterval))
+	prettyPrint(e)
 
-	go func() {
-		for {
-			<-ticker.C
-			thresholdTimeStamp := time.Now().Unix() - e.Window
-			// aim is to keep events of timestamps greater than threshold timestamp
-
-			fmt.Printf("Removing timestamps less than or equal to %v \n", thresholdTimeStamp)
-
-			e.mutex.Lock()
-			for zone_name, zone_timestamps := range e.Zones {
-				for timestamp := range zone_timestamps {
-					if timestamp <= thresholdTimeStamp {
-						delete(e.Zones[zone_name], timestamp)
-					} else {
-						// breaking out of loop if at any point timestamps start to increase than threshold: it reduces redundant iteration computation
-						break
-					}
-				}
-			}
-			e.mutex.Unlock()
-
-			fmt.Printf("Cleaned memory for Rule with id %v \n", rm.ID())
-		}
-	}()
+	go e.cleanService(rm.ID())
 
 	return nil
 }
@@ -138,7 +108,11 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		// implement logic after ratelimit exceeded
 		fmt.Println("Ratelimit exceeded")
 		corazaLogger.Debug().Msg("Ratelimit exceeded")
-		tx.Interrupt(&e.interrupt)
+		tx.Interrupt(&types.Interruption{
+			RuleID: r.ID(),
+			Status: e.status,
+			Action: e.action,
+		})
 
 		return
 	}
@@ -160,6 +134,112 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 
 func (e *Ratelimit) Type() rules.ActionType {
 	return rules.ActionTypeNondisruptive
+}
+
+func (e *Ratelimit) parseConfig(config string) error {
+	// acceptable keys
+	var err error
+
+	tokens := strings.Split(config, "&")
+
+	requiredValues := map[string]bool{
+		"zone":   false,
+		"events": false,
+		"window": false,
+	}
+
+	for _, token := range tokens {
+		pair := strings.Split(token, "=")
+		if len(pair) != 2 {
+			return fmt.Errorf("invalid usage of = for %v", pair)
+		}
+
+		key := pair[0]
+		value := pair[1]
+		fmt.Println(key, value)
+		switch key {
+		case "zone":
+			if e.zoneMacro, err = macro.NewMacro(value); err != nil {
+				fmt.Println(err.Error())
+				return fmt.Errorf("invalid macro name")
+			}
+			requiredValues[key] = true
+		case "events":
+			if e.MaxEvents, err = strconv.ParseInt(value, 10, 64); err != nil {
+				fmt.Println(err.Error())
+				return fmt.Errorf("invalid integer value for events")
+			}
+			requiredValues[key] = true
+		case "window":
+			if e.Window, err = strconv.ParseInt(value, 10, 64); err != nil {
+				fmt.Println(err.Error())
+				return fmt.Errorf("invalid integer value for window")
+			}
+			if e.Window == 0 {
+				return fmt.Errorf("value 0 is not allowed for key 'window'")
+			}
+			requiredValues[key] = true
+		case "interval":
+			if e.SweepInterval, err = strconv.ParseInt(value, 10, 64); err != nil {
+				fmt.Println(err.Error())
+				return fmt.Errorf("invalid integer value for interval")
+			}
+			if e.SweepInterval == 0 {
+				return fmt.Errorf("value 0 is not allowed for key 'sweepInterval'")
+			}
+		case "action":
+			if value == "drop" || value == "deny" || value == "redirect" {
+				e.action = value
+			} else {
+				return fmt.Errorf("action type should be one of 'drop', 'deny', 'redirect'")
+			}
+		case "status":
+			if e.status, err = strconv.Atoi(value); err != nil {
+				return fmt.Errorf("invalid status integer value")
+			}
+			if e.status < 0 || e.status > 500 {
+				return fmt.Errorf("status should be in range 0-500")
+			}
+		default:
+			return fmt.Errorf("%v is not allowed", key)
+		}
+	}
+
+	// check for required values
+	for key, found := range requiredValues {
+		if !found {
+			return fmt.Errorf("'%v' is required", key)
+		}
+	}
+
+	return nil
+}
+
+// a service to clean interval
+func (e *Ratelimit) cleanService(ruleID int) error {
+	ticker := time.NewTicker(time.Second * time.Duration(e.SweepInterval))
+	for {
+		<-ticker.C
+		thresholdTimeStamp := time.Now().Unix() - e.Window
+		// aim is to keep events of timestamps greater than threshold timestamp
+
+		fmt.Printf("Removing timestamps less than or equal to %v \n", thresholdTimeStamp)
+
+		e.mutex.Lock()
+		for zone_name, zone_timestamps := range e.Zones {
+			for timestamp := range zone_timestamps {
+				if timestamp <= thresholdTimeStamp {
+					delete(e.Zones[zone_name], timestamp)
+				} else {
+					// breaking out of loop if at any point timestamps start to increase than threshold: it reduces redundant iteration computation
+					break
+				}
+			}
+		}
+		e.mutex.Unlock()
+
+		fmt.Printf("Cleaned memory for Rule with id %v \n", ruleID)
+	}
 }
 
 func prettyPrint(i interface{}) {
