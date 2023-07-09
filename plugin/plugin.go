@@ -118,9 +118,10 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 			// 2 CASES: If the 11th request is received within the same second and
 			// 1st CASE: has host value as 'localhost:3000' and authority as 'abc', request won't be allowed as 10 requests for both the values of authority and host have exhausted.
 			// 2nd CASE: has host value as 'localhost:3000' but authority as 'xyz', request will be allowed as 10 requests for host has been fulfilled but a new value of authority has be received.
-		} else {
-			// log.Printf("Request denied on basis of %v", zoneMacro.String())
 		}
+		//else {
+		// log.Printf("Request denied on basis of %v", zoneMacro.String())
+		//}
 	}
 	// log.Println(e.Zones)
 
@@ -191,7 +192,7 @@ func (e *Ratelimit) parseConfig(config string) error {
 			}
 			requiredValues[key] = true
 		case "interval":
-			var interval int = 0
+			var interval int
 			if interval, err = strconv.Atoi(value); err != nil {
 				return errors.New("invalid integer value for interval")
 			}
