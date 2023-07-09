@@ -1,7 +1,7 @@
 package plugin
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -29,9 +29,9 @@ type ZoneEvents map[int64]int64 // unixTimestamp in seconds containing requests 
 
 type Ratelimit struct {
 	Zones         map[string]ZoneEvents
-	MaxEvents     int64 // no of requests allowed
-	Window        int64 // no of maxEvents in inteval : in seconds
-	SweepInterval int64 // cleans memory at interval : in seconds .
+	MaxEvents     int64         // no of requests allowed
+	Window        int64         // no of maxEvents in inteval : in seconds
+	SweepInterval time.Duration // cleans memory at interval : in seconds .
 	ZoneMacros    []macro.Macro
 	Action        string
 	Status        int // because coraza accepts 'int' in its interrupt struct
@@ -39,7 +39,7 @@ type Ratelimit struct {
 }
 
 func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
-	log.Println("Initiating Ratelimit plugin with config ", opts)
+	log.Printf("Initiating Ratelimit plugin with config for ruleID= %v and opts= %v", rm.ID(), opts)
 	var err error
 
 	e.Zones = make(map[string]ZoneEvents)
@@ -55,8 +55,6 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	}
 
 	e.mutex = &sync.Mutex{}
-
-	prettyPrint(e)
 
 	go e.memoryOptimizingService(rm.ID())
 
@@ -83,7 +81,7 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 
 	//extract zone
 
-	// MultiZones behave in OR manner, REQUEST will be allowed if any one of the zone is allowing the request
+	// MultiZones behave in 'OR' manner, REQUEST will be allowed if any one of the zone is allowing the request
 
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
@@ -121,17 +119,16 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 			// 1st CASE: has host value as 'localhost:3000' and authority as 'abc', request won't be allowed as 10 requests for both the values of authority and host have exhausted.
 			// 2nd CASE: has host value as 'localhost:3000' but authority as 'xyz', request will be allowed as 10 requests for host has been fulfilled but a new value of authority has be received.
 		} else {
-			log.Printf("Request denied on basis of %v", zoneMacro.String())
+			// log.Printf("Request denied on basis of %v", zoneMacro.String())
 		}
 	}
-	fmt.Println(e.Zones)
+	// log.Println(e.Zones)
 
 	if request_allowed {
 		return
 	}
 
 	// implement logic after ratelimit exceeded
-	log.Println("Ratelimit exceeded")
 	corazaLogger.Debug().Msg("Ratelimit exceeded")
 	tx.Interrupt(&types.Interruption{
 		RuleID: r.ID(),
@@ -167,54 +164,53 @@ func (e *Ratelimit) parseConfig(config string) error {
 	}
 
 	for _, token := range tokens {
-		pair := strings.Split(token, "=")
-		if len(pair) != 2 {
-			return fmt.Errorf("invalid usage of = for %v", pair)
+		key, value, found := strings.Cut(token, "=")
+		if !found || key == "" || value == "" || strings.Count(value, "=") != 0 {
+			return fmt.Errorf("invalid usage of = for %v", token)
 		}
-
-		key := pair[0]
-		value := pair[1]
 
 		switch key {
 		case "zone":
 			var ZoneMacro macro.Macro
 			if ZoneMacro, err = macro.NewMacro(value); err != nil {
-				return fmt.Errorf("invalid macro name")
+				return errors.New("invalid macro name")
 			}
 			e.ZoneMacros = append(e.ZoneMacros, ZoneMacro)
 			requiredValues[key] = true
 		case "events":
 			if e.MaxEvents, err = strconv.ParseInt(value, 10, 64); err != nil {
-				return fmt.Errorf("invalid integer value for events")
+				return errors.New("invalid integer value for events")
 			}
 			requiredValues[key] = true
 		case "window":
 			if e.Window, err = strconv.ParseInt(value, 10, 64); err != nil {
-				return fmt.Errorf("invalid integer value for window")
+				return errors.New("invalid integer value for window")
 			}
 			if e.Window == 0 {
-				return fmt.Errorf("value 0 is not allowed for key 'window'")
+				return errors.New("value 0 is not allowed for key 'window'")
 			}
 			requiredValues[key] = true
 		case "interval":
-			if e.SweepInterval, err = strconv.ParseInt(value, 10, 64); err != nil {
-				return fmt.Errorf("invalid integer value for interval")
+			var interval int = 0
+			if interval, err = strconv.Atoi(value); err != nil {
+				return errors.New("invalid integer value for interval")
 			}
-			if e.SweepInterval == 0 {
-				return fmt.Errorf("value 0 is not allowed for key 'sweepInterval'")
+			if interval == 0 {
+				return errors.New("value 0 is not allowed for key 'sweepInterval'")
 			}
+			e.SweepInterval = time.Duration(interval)
 		case "action":
 			if value == "drop" || value == "deny" || value == "redirect" {
 				e.Action = value
 			} else {
-				return fmt.Errorf("action type should be one of 'drop', 'deny', 'redirect'")
+				return errors.New("action type should be one of 'drop', 'deny', 'redirect'")
 			}
 		case "status":
 			if e.Status, err = strconv.Atoi(value); err != nil {
-				return fmt.Errorf("invalid status integer value")
+				return errors.New("invalid status integer value")
 			}
 			if e.Status < 0 || e.Status > 500 {
-				return fmt.Errorf("status should be in range 0-500")
+				return errors.New("status should be in range 0-500")
 			}
 		default:
 			return fmt.Errorf("%v is not allowed", key)
@@ -233,13 +229,13 @@ func (e *Ratelimit) parseConfig(config string) error {
 
 // a service to clean interval
 func (e *Ratelimit) memoryOptimizingService(ruleID int) {
-	ticker := time.NewTicker(time.Second * time.Duration(e.SweepInterval))
+	ticker := time.NewTicker(time.Second * e.SweepInterval)
 	for {
 		<-ticker.C
 		thresholdTimeStamp := time.Now().Unix() - e.Window
 		// aim is to keep events of timestamps greater than threshold timestamp
 
-		fmt.Printf("Removing timestamps less than or equal to %v \n", thresholdTimeStamp)
+		// fmt.Printf("Removing timestamps less than or equal to %v \n", thresholdTimeStamp)
 
 		e.mutex.Lock()
 		for zone_name, zone_timestamps := range e.Zones {
@@ -254,13 +250,8 @@ func (e *Ratelimit) memoryOptimizingService(ruleID int) {
 		}
 		e.mutex.Unlock()
 
-		fmt.Printf("Cleaned memory for Rule with id %v \n", ruleID)
+		// log.Printf("Cleaned memory for Rule with id %v \n", ruleID)
 	}
-}
-
-func prettyPrint(i interface{}) {
-	s, _ := json.MarshalIndent(i, "", "\t")
-	fmt.Println(string(s))
 }
 
 // type lock

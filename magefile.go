@@ -57,6 +57,11 @@ func Test() error {
 		return err
 	}
 
+	log.Println("Testing MultiZone Logic...")
+	if err := sh.RunV("go", "test", "-run", "^TestMultiZone$", "./plugin", "-v"); err != nil {
+		return err
+	}
+
 	return nil
 }
 

@@ -2,6 +2,7 @@
 package plugin
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -165,5 +166,10 @@ func TestMultiZone(t *testing.T) {
 		}(wg, mut, i)
 	}
 	wg.Wait()
-	// prettyPrint(results)
+	prettyPrint(results)
+}
+
+func prettyPrint(i interface{}) {
+	s, _ := json.MarshalIndent(i, "", "\t")
+	fmt.Println(string(s))
 }

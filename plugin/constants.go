@@ -80,4 +80,7 @@ var ConfigTestCases = []ConfigTestCase{
 	{ID: 24,
 		Config:   "zone=%{REQUEST_HEADERS.host}&events=100&window=2&interval=2&action=drop&status=abc", // status cannot be string
 		Expected: false},
+	{ID: 25,
+		Config:   "zone=%{REQUEST_HEADERS.host}=&events=100=&window2", // irregular use of =
+		Expected: false},
 }
