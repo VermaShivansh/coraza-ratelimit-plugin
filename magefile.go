@@ -60,6 +60,34 @@ func Test() error {
 	return nil
 }
 
+func TestConfig() error {
+	log.Println("Removing test cache")
+	if err := sh.RunV("go", "clean", "--testcache"); err != nil {
+		return err
+	}
+
+	log.Println("Ratelimit Configuration Parser Testing...")
+	if err := sh.RunV("go", "test", "-run", "^TestConfigurationParser$", "./plugin", "-v"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func TestMultiZone() error {
+	log.Println("Removing test cache")
+	if err := sh.RunV("go", "clean", "--testcache"); err != nil {
+		return err
+	}
+
+	log.Println("Testing MultiZone Logic...")
+	if err := sh.RunV("go", "test", "-run", "^TestMultiZone$", "./plugin", "-v"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // remove tmp files
 func Clean() error {
 	if err := sh.RunV("rm", "-rf", "tmp"); err != nil {

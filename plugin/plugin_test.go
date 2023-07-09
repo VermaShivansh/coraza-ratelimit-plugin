@@ -127,3 +127,43 @@ func TestStressOfRateLimit(t *testing.T) {
 	wg.Wait()
 	prettyPrint(results)
 }
+
+func TestMultiZone(t *testing.T) {
+	wg := &sync.WaitGroup{}
+
+	results := []string{}
+	mut := &sync.Mutex{}
+	initialTime := time.Now()
+
+	// get an instance of http test server with waf
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&zone=%{QUERY_STRING}&events=10&window=1&interval=2&action=deny&status=401, pass, status:200"`
+
+	svr := helpers.NewHttpTestWafServer(conf)
+	defer svr.Close()
+
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		requestURL := fmt.Sprintf("%v?id=1&category=%v", svr.URL, i%4)
+		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
+			defer wg.Done()
+			for j := 0; j < 1; j++ {
+				resp, err := svr.Client().Get(requestURL)
+				if err != nil {
+					fmt.Printf("Error: %s", err)
+					// t.Errorf("Error in %v, expected: %v, got: %v", test.url, test.expectedStatusCode, err.Error())
+				}
+				if resp.StatusCode == 200 {
+					mut.Lock()
+					results = append(results, fmt.Sprintf("PASS: i=%v, j=%v, time=%v", i, j, time.Since(initialTime).Milliseconds()))
+					mut.Unlock()
+				} else {
+					mut.Lock()
+					results = append(results, fmt.Sprintf("FAIL: i=%v, j=%v, time=%v", i, j, time.Since(initialTime).Milliseconds()))
+					mut.Unlock()
+				}
+			}
+		}(wg, mut, i)
+	}
+	wg.Wait()
+	// prettyPrint(results)
+}
