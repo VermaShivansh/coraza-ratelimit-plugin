@@ -45,7 +45,7 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	e.Zones = make(map[string]ZoneEvents)
 
 	//default values
-	e.SweepInterval = 5
+	e.SweepInterval = time.Duration(5) //5 seconds
 	e.Action = "drop"
 	e.Status = 429
 
@@ -83,15 +83,14 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 
 	// MultiZones behave in 'OR' manner, REQUEST will be allowed if any one of the zone is allowing the request
 
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-
 	for _, zoneMacro := range e.ZoneMacros {
 		zone_name := zoneMacro.Expand(tx)
 		if zone_name == "" {
 			zone_name = "misc" // if in case of empty string or some kind of issue in macro expansion we send all the requests to misc name
 		}
 		currentTimeInSecond := time.Now().Unix()
+
+		e.mutex.Lock()
 
 		_, ok := e.Zones[zone_name]
 		if !ok {
@@ -122,6 +121,8 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		//else {
 		// log.Printf("Request denied on basis of %v", zoneMacro.String())
 		//}
+
+		e.mutex.Unlock()
 	}
 	// log.Println(e.Zones)
 
@@ -159,7 +160,7 @@ func (e *Ratelimit) parseConfig(config string) error {
 	tokens := strings.Split(config, "&")
 
 	requiredValues := map[string]bool{
-		"zone":   false,
+		"zone[]": false,
 		"events": false,
 		"window": false,
 	}
@@ -171,21 +172,21 @@ func (e *Ratelimit) parseConfig(config string) error {
 		}
 
 		switch key {
-		case "zone":
+		case "zone[]":
 			var ZoneMacro macro.Macro
 			if ZoneMacro, err = macro.NewMacro(value); err != nil {
-				return errors.New("invalid macro name")
+				return fmt.Errorf("invalid macro name: %v", value)
 			}
 			e.ZoneMacros = append(e.ZoneMacros, ZoneMacro)
 			requiredValues[key] = true
 		case "events":
 			if e.MaxEvents, err = strconv.ParseInt(value, 10, 64); err != nil {
-				return errors.New("invalid integer value for events")
+				return fmt.Errorf("invalid integer value for events: %v", value)
 			}
 			requiredValues[key] = true
 		case "window":
 			if e.Window, err = strconv.ParseInt(value, 10, 64); err != nil {
-				return errors.New("invalid integer value for window")
+				return fmt.Errorf("invalid integer value for window: %v", value)
 			}
 			if e.Window == 0 {
 				return errors.New("value 0 is not allowed for key 'window'")
@@ -194,7 +195,7 @@ func (e *Ratelimit) parseConfig(config string) error {
 		case "interval":
 			var interval int
 			if interval, err = strconv.Atoi(value); err != nil {
-				return errors.New("invalid integer value for interval")
+				return fmt.Errorf("invalid integer value for interval: %v", value)
 			}
 			if interval == 0 {
 				return errors.New("value 0 is not allowed for key 'sweepInterval'")
@@ -208,10 +209,10 @@ func (e *Ratelimit) parseConfig(config string) error {
 			}
 		case "status":
 			if e.Status, err = strconv.Atoi(value); err != nil {
-				return errors.New("invalid status integer value")
+				return fmt.Errorf("invalid status integer value: %v", value)
 			}
 			if e.Status < 0 || e.Status > 500 {
-				return errors.New("status should be in range 0-500")
+				return fmt.Errorf("status should be in range 0-500: received: %v ", value)
 			}
 		default:
 			return fmt.Errorf("%v is not allowed", key)

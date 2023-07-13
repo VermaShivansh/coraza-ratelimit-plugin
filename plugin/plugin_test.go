@@ -50,7 +50,7 @@ func TestLogicOfRateLimit(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&events=200&window=1&interval=2&action=deny&status=403, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=200&window=1&interval=2&action=deny&status=403, pass, status:200"`
 
 	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
@@ -96,7 +96,7 @@ func TestStressOfRateLimit(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&events=300&window=1&interval=2&action=deny&status=401, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=300&window=1&interval=2&action=deny&status=401, pass, status:200"`
 
 	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
@@ -137,7 +137,7 @@ func TestMultiZone(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone=%{REQUEST_HEADERS.host}&zone=%{QUERY_STRING}&events=10&window=1&interval=2&action=deny&status=401, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&zone[]=%{QUERY_STRING}&events=10&window=1&interval=2&action=deny&status=401, pass, status:200"`
 
 	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
