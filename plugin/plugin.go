@@ -89,6 +89,7 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 			zone_name = "misc" // if in case of empty string or some kind of issue in macro expansion we send all the requests to misc name
 		}
 		currentTimeInSecond := time.Now().Unix()
+		var totalEventsOccuredInPreviousWindow int64 = 0
 
 		e.mutex.Lock()
 
@@ -103,7 +104,6 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		}
 
 		// total events for that zone
-		var totalEventsOccuredInPreviousWindow int64 = 0
 		for i := currentTimeInSecond; i > currentTimeInSecond-e.Window; i-- {
 			totalEventsOccuredInPreviousWindow += e.Zones[zone_name][i]
 		}
