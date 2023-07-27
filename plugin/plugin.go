@@ -167,7 +167,7 @@ func (e *Ratelimit) parseConfig(config string) error {
 
 	for _, token := range tokens {
 		key, value, found := strings.Cut(token, "=")
-		if !found || key == "" || value == "" || strings.Count(value, "=") != 0 {
+		if !found || key == "" || value == "" || strings.Contains(value, "=") {
 			return fmt.Errorf("invalid usage of = for %v", token)
 		}
 
