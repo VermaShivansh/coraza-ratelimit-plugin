@@ -21,7 +21,7 @@ var locker *redislock.Client
 func init() {
 	// Initialize the Redis client
 	client = redis.NewClient(&redis.Options{
-		Addr:     "13.39.121.216:6380",
+		Addr:     "localhost:6379",
 		Protocol: 1,
 	})
 
