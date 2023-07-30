@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -21,10 +22,21 @@ func (e *Ratelimit) syncService() error {
 		//read from the redis
 		fmt.Println("Syncing with Redis")
 
-		result, err := GetData(e.UniqueKey)
+		// currentTimeMilli := time.Now().UnixMilli()
+		//Obtain Redis lock
+		ctx := context.Background()
+
+		redisLock, err := ObtainLock(ctx, e.UniqueKey)
+		if err != nil {
+			return err
+		}
+		// fmt.Println("LOCK OBTAIN", time.Now().UnixMilli()-currentTimeMilli)
+
+		result, err := GetData(ctx, e.UniqueKey)
 		if err != nil && err != redis.Nil {
 			return fmt.Errorf("error while fetching from redis: %v", err.Error())
 		}
+		// fmt.Println("GET", time.Now().UnixMilli()-currentTimeMilli)
 
 		currentTime := time.Now().Unix()
 		syncedZones := Zones{}
@@ -37,15 +49,15 @@ func (e *Ratelimit) syncService() error {
 			}
 		}
 
-		fmt.Println(syncedZones)
-
 		//update locally
 		e.mutex.Lock()
+
 		for zone_name, zone_events := range syncedZones {
 			for timestamp, events_in_timestamp := range zone_events {
 				// we dont care about the timestamps whose window is already passed
 				// we dont care about the timestamps which already have been synced
-				if timestamp > e.Distributed.lastSync && timestamp < currentTime-e.Window {
+
+				if timestamp > e.Distributed.lastSync && timestamp > (currentTime-e.Window) {
 					_, ok := e.Zones[zone_name]
 					if !ok {
 						// create macro for it and update zone_events in currenttimestamp
@@ -68,16 +80,26 @@ func (e *Ratelimit) syncService() error {
 		syncedZones = e.Zones
 		e.mutex.Unlock()
 
+		fmt.Println("syncedZones", syncedZones)
+
 		jsonStrByteArray, err := json.Marshal(syncedZones)
 		if err != nil {
 			return fmt.Errorf("error encoding JSON: %v", err.Error())
 		}
 
 		// set in redis
-		err = SetDataWithLock(e.UniqueKey, string(jsonStrByteArray))
+		err = SetData(ctx, e.UniqueKey, string(jsonStrByteArray))
 		if err != nil {
 			return fmt.Errorf("error in setting value in DB: %v", err.Error())
 		}
+		// fmt.Println("SET", time.Now().UnixMilli()-currentTimeMilli)
+
+		err = redisLock.Release(ctx)
+		if err != nil {
+			return err
+		}
+
+		// fmt.Println("LOCK RELEASE", time.Now().UnixMilli()-currentTimeMilli)
 
 		//updating last sync time with the time when we fetched data from redis
 		e.Distributed.lastSync = currentTime

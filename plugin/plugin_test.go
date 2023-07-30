@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -172,7 +174,10 @@ func TestMultiZone(t *testing.T) {
 func TestDistributedSystemsSupport(t *testing.T) {
 
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=4&window=5&interval=10&action=deny&status=403, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=fixed&events=5&window=6&interval=10&action=deny&status=403, pass, status:200"`
+
+	//client server which will request to running WAF instances
+	clientSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	svr1 := helpers.NewHttpTestWafServer(conf)
 	defer svr1.Close()
@@ -180,15 +185,15 @@ func TestDistributedSystemsSupport(t *testing.T) {
 	svr2 := helpers.NewHttpTestWafServer(conf)
 	defer svr2.Close()
 
-	// svr3 := helpers.NewHttpTestWafServer(conf)
-	// defer svr3.Close()
+	svr3 := helpers.NewHttpTestWafServer(conf)
+	defer svr3.Close()
 
+	fmt.Println(svr1.URL, svr2.URL, svr3.URL)
 	for {
 		time.Sleep(1 * time.Second)
-		svr1.Client().Get(fmt.Sprintf("%v?id=1", svr1.URL))
-		svr2.Client().Get(fmt.Sprintf("%v?id=1", svr2.URL))
-		// svr3.Client().Get(fmt.Sprintf("%v?id=1", svr1.URL))
-
+		clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr1.URL))
+		clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr2.URL))
+		clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr3.URL))
 	}
 
 }

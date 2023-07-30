@@ -66,7 +66,7 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	fmt.Println(e.UniqueKey)
 
 	e.Distributed.Active = true
-	e.Distributed.SyncInterval = time.Second * 5
+	e.Distributed.SyncInterval = 6 * time.Second
 	e.Distributed.lastSync = 0
 
 	if e.Distributed.Active {
@@ -129,9 +129,9 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 			// 1st CASE: has host value as 'localhost:3000' and authority as 'abc', request won't be allowed as 10 requests for both the values of authority and host have exhausted.
 			// 2nd CASE: has host value as 'localhost:3000' but authority as 'xyz', request will be allowed as 10 requests for host has been fulfilled but a new value of authority has be received.
 		}
-		//else {
+		// else {
 		// log.Printf("Request denied on basis of %v", zoneMacro.String())
-		//}
+		// }
 
 		e.mutex.Unlock()
 	}
@@ -148,16 +148,6 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 		Status: e.Status,
 		Action: e.Action,
 	})
-
-	// prettyPrint(tx.Variables().Rule())
-
-	// get information about current matching SecRule
-	// prettyPrint(tx.Collection(variables.MatchedVar).FindAll())
-	// prettyPrint(tx.Collection(variables.MatchedVarName).FindAll())
-	// prettyPrint(tx.Collection(variables.RemoteAddr).FindAll())
-	// prettyPrint(tx.Collection(variables.Rule).FindAll())
-	// prettyPrint(tx.Collection(variables.ResponseHeaders).FindAll())
-
 }
 
 func (e *Ratelimit) Type() rules.ActionType {
@@ -255,6 +245,10 @@ func (e *Ratelimit) memoryOptimizingService(ruleID int) {
 				if timestamp <= thresholdTimeStamp {
 					delete(e.Zones[zone_name], timestamp)
 				}
+			}
+			//removes zones with no timestamps
+			if len(zone_timestamps) == 0 {
+				delete(e.Zones, zone_name)
 			}
 		}
 		e.mutex.Unlock()
