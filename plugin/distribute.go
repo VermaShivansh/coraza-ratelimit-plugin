@@ -94,6 +94,7 @@ func (e *Ratelimit) syncService() error {
 		}
 		// fmt.Println("SET", time.Now().UnixMilli()-currentTimeMilli)
 
+		// Release the lock so other processes or threads can obtain a lock.
 		err = redisLock.Release(ctx)
 		if err != nil {
 			return err
