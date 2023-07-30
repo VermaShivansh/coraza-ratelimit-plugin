@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,7 +16,7 @@ type Distrubute struct {
 	lastSync     int64
 }
 
-func (e *Ratelimit) syncService() error {
+func (e *Ratelimit) syncService() {
 	ticker := time.NewTicker(e.Distributed.SyncInterval)
 
 	syncFunc := func() error {
@@ -80,7 +81,7 @@ func (e *Ratelimit) syncService() error {
 		syncedZones = e.Zones
 		e.mutex.Unlock()
 
-		fmt.Println("syncedZones", syncedZones)
+		log.Println("syncedZones", syncedZones)
 
 		jsonStrByteArray, err := json.Marshal(syncedZones)
 		if err != nil {
@@ -111,13 +112,12 @@ func (e *Ratelimit) syncService() error {
 	//populate initial values of ZoneEvents
 	if err := syncFunc(); err != nil {
 		fmt.Println(err)
-		return err
 	}
 
 	for {
 		<-ticker.C
 		if err := syncFunc(); err != nil {
-			return err
+			fmt.Println(err)
 		}
 	}
 

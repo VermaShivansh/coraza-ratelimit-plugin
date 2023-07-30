@@ -241,7 +241,7 @@ func (e *Ratelimit) memoryOptimizingService(ruleID int) {
 		// fmt.Printf("Removing timestamps less than or equal to %v \n", thresholdTimeStamp)
 		e.mutex.Lock()
 		for zone_name, zone_timestamps := range e.Zones {
-			for timestamp, _ := range zone_timestamps {
+			for timestamp := range zone_timestamps {
 				if timestamp <= thresholdTimeStamp {
 					delete(e.Zones[zone_name], timestamp)
 				}

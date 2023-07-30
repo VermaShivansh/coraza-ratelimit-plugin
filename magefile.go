@@ -99,8 +99,24 @@ func TestDist() error {
 		return err
 	}
 
+	// stopping docker container if already running
+	log.Println("Shutting docker container")
+	if err := sh.RunV("docker-compose", "down"); err != nil {
+		return err
+	}
+
+	log.Println("Starting docker container")
+	if err := sh.RunV("docker-compose", "up", "-d"); err != nil {
+		return err
+	}
+
 	log.Println("Testing Distributed Systems Logic...")
 	if err := sh.RunV("go", "test", "-run", "^TestDistributedSystemsSupport$", "./plugin", "-v"); err != nil {
+		return err
+	}
+
+	log.Println("Stopping docker container")
+	if err := sh.RunV("docker-compose", "down"); err != nil {
 		return err
 	}
 

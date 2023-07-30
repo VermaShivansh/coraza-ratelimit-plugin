@@ -179,6 +179,7 @@ func TestDistributedSystemsSupport(t *testing.T) {
 	//client server which will request to running WAF instances
 	clientSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
+	// 3 WAF instances
 	svr1 := helpers.NewHttpTestWafServer(conf)
 	defer svr1.Close()
 
@@ -189,11 +190,19 @@ func TestDistributedSystemsSupport(t *testing.T) {
 	defer svr3.Close()
 
 	fmt.Println(svr1.URL, svr2.URL, svr3.URL)
+
+	// 1 req at a time to all 3 servers
 	for {
 		time.Sleep(1 * time.Second)
-		clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr1.URL))
-		clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr2.URL))
-		clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr3.URL))
+		if _, err := clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr1.URL)); err != nil {
+			log.Println(err)
+		}
+		if _, err := clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr2.URL)); err != nil {
+			log.Println(err)
+		}
+		if _, err := clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr3.URL)); err != nil {
+			log.Println(err)
+		}
 	}
 
 }
