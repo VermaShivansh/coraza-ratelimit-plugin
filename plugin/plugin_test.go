@@ -169,6 +169,30 @@ func TestMultiZone(t *testing.T) {
 	prettyPrint(results)
 }
 
+func TestDistributedSystemsSupport(t *testing.T) {
+
+	// get an instance of http test server with waf
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=4&window=5&interval=10&action=deny&status=403, pass, status:200"`
+
+	svr1 := helpers.NewHttpTestWafServer(conf)
+	defer svr1.Close()
+
+	svr2 := helpers.NewHttpTestWafServer(conf)
+	defer svr2.Close()
+
+	// svr3 := helpers.NewHttpTestWafServer(conf)
+	// defer svr3.Close()
+
+	for {
+		time.Sleep(1 * time.Second)
+		svr1.Client().Get(fmt.Sprintf("%v?id=1", svr1.URL))
+		svr2.Client().Get(fmt.Sprintf("%v?id=1", svr2.URL))
+		// svr3.Client().Get(fmt.Sprintf("%v?id=1", svr1.URL))
+
+	}
+
+}
+
 func prettyPrint(i interface{}) {
 	s, _ := json.MarshalIndent(i, "", "\t")
 	fmt.Println(string(s))

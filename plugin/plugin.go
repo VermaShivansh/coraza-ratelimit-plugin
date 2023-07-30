@@ -27,8 +27,10 @@ func newRatelimit() rules.Action {
 
 type ZoneEvents map[int64]int64 // unixTimestamp in seconds containing requests per second
 
+type Zones map[string]ZoneEvents
+
 type Ratelimit struct {
-	Zones         map[string]ZoneEvents
+	Zones         Zones
 	MaxEvents     int64         // no of requests allowed
 	Window        int64         // no of maxEvents in inteval : in seconds
 	SweepInterval time.Duration // cleans memory at interval : in seconds .
@@ -36,6 +38,8 @@ type Ratelimit struct {
 	Action        string
 	Status        int // because coraza accepts 'int' in its interrupt struct
 	mutex         *sync.Mutex
+	UniqueKey     string // has to be same for all the instances which have to be synced together
+	Distributed   Distrubute
 }
 
 func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
@@ -58,6 +62,17 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 
 	go e.memoryOptimizingService(rm.ID())
 
+	e.UniqueKey = fmt.Sprintf("coraza-%v", rm.ID())
+	fmt.Println(e.UniqueKey)
+
+	e.Distributed.Active = true
+	e.Distributed.SyncInterval = time.Second * 5
+	e.Distributed.lastSync = 0
+
+	if e.Distributed.Active {
+		go e.syncService()
+	}
+
 	return nil
 }
 
@@ -65,11 +80,6 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 // Print statements will be removed before finalizing
 
 func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
-	// tx.Variables().All(func(v variables.RuleVariable, col collection.Collection) bool {
-	// 	prettyPrint(map[string]interface{}{"variable": col.Name(), "col": col.FindAll()})
-	// 	return true
-	// })
-
 	corazaLogger := tx.DebugLogger().With(
 		debuglog.Str("action", "ratelimit"),
 		debuglog.Int("rule_id", r.ID()),
@@ -83,12 +93,13 @@ func (e *Ratelimit) Evaluate(r rules.RuleMetadata, tx rules.TransactionState) {
 
 	// MultiZones behave in 'OR' manner, REQUEST will be allowed if any one of the zone is allowing the request
 
+	currentTimeInSecond := time.Now().Unix()
+
 	for _, zoneMacro := range e.ZoneMacros {
 		zone_name := zoneMacro.Expand(tx)
 		if zone_name == "" {
 			zone_name = "misc" // if in case of empty string or some kind of issue in macro expansion we send all the requests to misc name
 		}
-		currentTimeInSecond := time.Now().Unix()
 		var totalEventsOccuredInPreviousWindow int64 = 0
 
 		e.mutex.Lock()
@@ -238,15 +249,11 @@ func (e *Ratelimit) memoryOptimizingService(ruleID int) {
 		// aim is to keep events of timestamps greater than threshold timestamp
 
 		// fmt.Printf("Removing timestamps less than or equal to %v \n", thresholdTimeStamp)
-
 		e.mutex.Lock()
 		for zone_name, zone_timestamps := range e.Zones {
-			for timestamp := range zone_timestamps {
+			for timestamp, _ := range zone_timestamps {
 				if timestamp <= thresholdTimeStamp {
 					delete(e.Zones[zone_name], timestamp)
-				} else {
-					// breaking out of loop if at any point timestamps start to increase than threshold: it reduces redundant iteration computation
-					break
 				}
 			}
 		}
@@ -255,9 +262,3 @@ func (e *Ratelimit) memoryOptimizingService(ruleID int) {
 		// log.Printf("Cleaned memory for Rule with id %v \n", ruleID)
 	}
 }
-
-// type lock
-var (
-	_ rules.Action          = &Ratelimit{}
-	_ plugins.ActionFactory = newRatelimit
-)

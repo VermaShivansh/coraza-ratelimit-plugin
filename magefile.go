@@ -93,6 +93,20 @@ func TestMultiZone() error {
 	return nil
 }
 
+func TestDist() error {
+	log.Println("Removing test cache")
+	if err := sh.RunV("go", "clean", "--testcache"); err != nil {
+		return err
+	}
+
+	log.Println("Testing Distributed Systems Logic...")
+	if err := sh.RunV("go", "test", "-run", "^TestDistributedSystemsSupport$", "./plugin", "-v"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // remove tmp files
 func Clean() error {
 	if err := sh.RunV("rm", "-rf", "tmp"); err != nil {
