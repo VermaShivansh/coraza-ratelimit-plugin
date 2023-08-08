@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/vermaShivansh/coraza-ratelimit-plugin/helpers"
 )
 
@@ -22,34 +23,23 @@ func TestConfigurationParser(t *testing.T) {
 	// we will only be testing parseConfig method using the value sent in ratelimit action
 	testCases := ConfigTestCases
 
-	failedTestCases := []ConfigTestCase{}
-
 	ratelimit := &Ratelimit{}
 
 	for _, testCase := range testCases {
-		err := ratelimit.parseConfig(testCase.Config)
-		if (err != nil && !testCase.Expected) || (err == nil && testCase.Expected) {
-			continue
+		if testCase.Expected {
+			assert.Equal(t, nil, ratelimit.parseConfig(testCase.Config))
 		} else {
-			failedTestCases = append(failedTestCases, testCase)
+			assert.NotEqual(t, nil, ratelimit.parseConfig(testCase.Config))
 		}
-	}
-
-	if len(failedTestCases) != 0 {
-		t.Errorf("Following testcases failed %v", failedTestCases)
-		t.FailNow()
 	}
 
 	fmt.Println("Ratelimit configuration check passed")
 }
 
-// sends 200 requests every second to server. With Config maxEvents=200, sweepInterval=2, window=1 // this should work perfectly fine
+// sends 200 requests every second to server. With Config maxEvents=200, sweepInterval=2, window=1
+// all requests should give 200
 func TestLogicOfRateLimit(t *testing.T) {
 	wg := &sync.WaitGroup{}
-
-	results := []string{}
-	mut := &sync.Mutex{}
-	initialTime := time.Now()
 
 	// get an instance of http test server with waf
 	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=200&window=1&interval=2&action=deny&status=403, pass, status:200"`
@@ -58,79 +48,85 @@ func TestLogicOfRateLimit(t *testing.T) {
 	defer svr.Close()
 
 	requestURL := fmt.Sprintf("%v?id=1", svr.URL)
-	log.Println("requestURL", requestURL)
 
-	for i := 0; i < 1000; i++ {
-		if i%200 == 0 {
-			time.Sleep(time.Second * 1)
+	ticker := time.NewTicker(time.Second * 1)
+
+	i := 0
+
+	for {
+		<-ticker.C
+
+		for i := 0; i < 200; i++ {
+
+			wg.Add(1)
+			go func(wg *sync.WaitGroup, i int) {
+				defer wg.Done()
+				for j := 0; j < 1; j++ {
+					resp, err := svr.Client().Get(requestURL)
+					if err != nil {
+						t.Errorf("Error in %v, expected: %v, got: %v", i, 200, err.Error())
+					}
+					assert.Equal(t, 200, resp.StatusCode)
+				}
+			}(wg, i)
 		}
-		wg.Add(1)
-		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
-			defer wg.Done()
-			for j := 0; j < 1; j++ {
-				resp, err := svr.Client().Get(requestURL)
-				if err != nil {
-					fmt.Printf("Error: %s", err)
-					// t.Errorf("Error in %v, expected: %v, got: %v", test.url, test.expectedStatusCode, err.Error())
-				}
-				if resp.StatusCode == 200 {
-					mut.Lock()
-					results = append(results, fmt.Sprintf("PASS: i=%v, j=%v, time=%v", i, j, time.Since(initialTime).Milliseconds()))
-					mut.Unlock()
-				} else {
-					mut.Lock()
-					results = append(results, fmt.Sprintf("FAIL: i=%v, j=%v, time=%v", i, j, time.Since(initialTime).Milliseconds()))
-					mut.Unlock()
-				}
-			}
-		}(wg, mut, i)
+
+		i++
+
+		if i == 5 {
+			ticker.Stop()
+			break
+		}
+
 	}
+
 	wg.Wait()
-	prettyPrint(results)
 }
 
-// 1000 requests in a second
+// 1000 requests in a second should be executed successfully.
+// currently it is taking 625ms to execute 1000req/sec
 func TestStressOfRateLimit(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
-	results := []string{}
-	mut := &sync.Mutex{}
-	initialTime := time.Now()
-
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=300&window=1&interval=2&action=deny&status=401, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=300&window=1&interval=2&action=deny&status=429, pass, status:200"`
 
 	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
 
 	requestURL := fmt.Sprintf("%v?id=1", svr.URL)
 
+	currentTime := time.Now().UnixMilli()
+
 	for i := 0; i < 1000; i++ {
+
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
+		go func(wg *sync.WaitGroup, i int) {
 			defer wg.Done()
 			for j := 0; j < 1; j++ {
-				resp, err := svr.Client().Get(requestURL)
+				_, err := svr.Client().Get(requestURL)
 				if err != nil {
-					fmt.Printf("Error: %s", err)
-					// t.Errorf("Error in %v, expected: %v, got: %v", test.url, test.expectedStatusCode, err.Error())
+					t.Errorf("Error in %v, expected: %v, got: %v", i, 200, err.Error())
 				}
-				if resp.StatusCode == 200 {
-					mut.Lock()
-					results = append(results, fmt.Sprintf("PASS: i=%v, j=%v, time=%v", i, j, time.Since(initialTime).Milliseconds()))
-					mut.Unlock()
-				} else {
-					mut.Lock()
-					results = append(results, fmt.Sprintf("FAIL: i=%v, j=%v, time=%v", i, j, time.Since(initialTime).Milliseconds()))
-					mut.Unlock()
-				}
+				// assert.Equal(t, 200, resp.StatusCode)
 			}
-		}(wg, mut, i)
+		}(wg, i)
 	}
+
 	wg.Wait()
-	prettyPrint(results)
+
+	timeTaken := time.Now().UnixMilli() - currentTime
+
+	assert.LessOrEqual(t, timeTaken, int64(1000))
+
+	fmt.Printf("Time taken to execute 1000 goroutines sending 1request at server is: %v\n", timeTaken)
 }
 
+// host zone remains same in all request but zone dependent on macro queryString changes
+// total 4 different types of queryStrings are used ?id=1&category=0/1/2/3
+// overall 48 requests are executed in 1 second and 11 events are allowed in 1 second window
+// after first 11 requests-> request will fail according to zone HOST but will be allowed as it won't exceed 11 requests per zone according to queryString zone (each zone would still have approx 10 reqs remaining)
+// last 4 reqs will fail for each different zone based on queryString as only 11reqs are allowed but these last reqs would be the 12th request.
 func TestMultiZone(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
@@ -139,36 +135,40 @@ func TestMultiZone(t *testing.T) {
 	initialTime := time.Now()
 
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&zone[]=%{QUERY_STRING}&events=10&window=1&interval=2&action=deny&status=401, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&zone[]=%{QUERY_STRING}&events=11&window=1&interval=2&action=deny&status=401, pass, status:200"`
 
 	svr := helpers.NewHttpTestWafServer(conf)
 	defer svr.Close()
 
-	for i := 0; i < 50; i++ {
+	failedReqs := 0
+
+	for i := 0; i < 48; i++ {
 		wg.Add(1)
 		requestURL := fmt.Sprintf("%v?id=1&category=%v", svr.URL, i%4)
 		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
 			defer wg.Done()
-			for j := 0; j < 1; j++ {
-				resp, err := svr.Client().Get(requestURL)
-				if err != nil {
-					fmt.Printf("Error: %s", err)
-					// t.Errorf("Error in %v, expected: %v, got: %v", test.url, test.expectedStatusCode, err.Error())
-				}
-				if resp.StatusCode == 200 {
-					mut.Lock()
-					results = append(results, fmt.Sprintf("PASS: i=%v, j=%v, time=%v", i, j, time.Since(initialTime).Milliseconds()))
-					mut.Unlock()
-				} else {
-					mut.Lock()
-					results = append(results, fmt.Sprintf("FAIL: i=%v, j=%v, time=%v", i, j, time.Since(initialTime).Milliseconds()))
-					mut.Unlock()
-				}
+			resp, err := svr.Client().Get(requestURL)
+			if err != nil {
+				fmt.Printf("Error: %s", err)
+				// t.Errorf("Error in %v, expected: %v, got: %v", test.url, test.expectedStatusCode, err.Error())
+			}
+			if resp.StatusCode == 200 {
+				mut.Lock()
+				results = append(results, fmt.Sprintf("PASS: i=%v, time=%v", i, time.Since(initialTime).Milliseconds()))
+				mut.Unlock()
+			} else {
+				mut.Lock()
+				failedReqs++
+				results = append(results, fmt.Sprintf("FAIL: i=%v, time=%v", i, time.Since(initialTime).Milliseconds()))
+				mut.Unlock()
 			}
 		}(wg, mut, i)
 	}
 	wg.Wait()
+
 	prettyPrint(results)
+
+	assert.Equal(t, 4, failedReqs, "only 4 reqs should fail according to the logic")
 }
 
 func TestDistributedSystemsSupport(t *testing.T) {
@@ -193,7 +193,6 @@ func TestDistributedSystemsSupport(t *testing.T) {
 
 	// 1 req at a time to all 3 servers
 	for {
-		time.Sleep(1 * time.Second)
 		if _, err := clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr1.URL)); err != nil {
 			log.Println(err)
 		}
@@ -203,8 +202,8 @@ func TestDistributedSystemsSupport(t *testing.T) {
 		if _, err := clientSvr.Client().Get(fmt.Sprintf("%v?id=1", svr3.URL)); err != nil {
 			log.Println(err)
 		}
+		time.Sleep(1 * time.Second)
 	}
-
 }
 
 func prettyPrint(i interface{}) {
