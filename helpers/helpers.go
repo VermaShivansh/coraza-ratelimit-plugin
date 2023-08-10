@@ -1,10 +1,12 @@
 package helpers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"unicode"
 
 	"github.com/corazawaf/coraza/v3"
 	txhttp "github.com/corazawaf/coraza/v3/http"
@@ -54,4 +56,38 @@ func NewHttpTestWafServer(conf string) *httptest.Server {
 	})))
 
 	return svr
+}
+
+// checks if a string has
+// minimum 1 letter
+// mimimum 1 number
+// minimum 16 letters
+func CheckRatelimitDistributeKey(input string) error {
+	if len(input) < 16 {
+		return errors.New("distribute key must have minimum 16 alphanumeric characters")
+	}
+
+	hasNumber := false
+	hasAlphabet := false
+
+	for _, char := range input {
+		if !hasNumber && unicode.IsNumber(char) {
+			hasNumber = true
+		} else if !hasAlphabet && unicode.IsLetter(char) {
+			hasAlphabet = true
+		}
+		if hasNumber && hasAlphabet {
+			break
+		}
+	}
+
+	if !hasNumber {
+		return errors.New("dstribute key must have atleast 1 number")
+	}
+
+	if !hasAlphabet {
+		return errors.New("distribute key must have atleast 1 alphabet")
+	}
+
+	return nil
 }

@@ -2,18 +2,46 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/redis/go-redis/v9"
+	"github.com/vermaShivansh/coraza-ratelimit-plugin/helpers"
 )
 
-type Distrubute struct {
-	Active       bool
-	SyncInterval time.Duration
-	lastSync     int64
+type Distributed struct {
+	Active       bool          // if ratelimit has to be distributed
+	SyncInterval time.Duration // syncing with redis at interval
+	lastSync     int64         // timestamp for lastSync with redis
+	UniqueKey    string        // has to be same for all the instances which have to be synced together
+}
+
+var RATELIMIT_KEY = "coraza_ratelimit_key"
+
+// initiate distribution
+func (e *Ratelimit) initDistribute(syncInterval time.Duration) error {
+	var err error
+
+	unique_key := os.Getenv(RATELIMIT_KEY)
+
+	if unique_key == "" {
+		return errors.New("please set a env value with keyname `coraza_ratelimit_key` to use ratelimit distribution ")
+	}
+
+	if err = helpers.CheckRatelimitDistributeKey(unique_key); err != nil {
+		return err
+	}
+
+	e.Distributed.Active = true
+	e.Distributed.UniqueKey = unique_key
+	e.Distributed.SyncInterval = syncInterval
+	e.Distributed.lastSync = 0
+
+	return nil
 }
 
 // it uses syncFunc declared below
@@ -29,7 +57,7 @@ func (e *Ratelimit) syncService() {
 		fmt.Println(err)
 	}
 
-	ticker := time.NewTicker(e.Distributed.SyncInterval)
+	ticker := time.NewTicker(time.Second * e.Distributed.SyncInterval)
 	for {
 		<-ticker.C
 		if err := syncFunc(e); err != nil {
@@ -54,13 +82,13 @@ func syncFunc(e *Ratelimit) error {
 	//Obtain Redis lock
 	ctx := context.Background()
 
-	redisLock, err := ObtainLock(ctx, e.UniqueKey)
+	redisLock, err := ObtainLock(ctx, e.Distributed.UniqueKey)
 	if err != nil {
 		return err
 	}
 	// fmt.Println("LOCK OBTAIN", time.Now().UnixMilli()-currentTimeMilli)
 
-	result, err := GetData(ctx, e.UniqueKey)
+	result, err := GetData(ctx, e.Distributed.UniqueKey)
 	if err != nil && err != redis.Nil {
 		return fmt.Errorf("error while fetching from redis: %v", err.Error())
 	}
@@ -116,7 +144,7 @@ func syncFunc(e *Ratelimit) error {
 	}
 
 	// set in redis
-	err = SetData(ctx, e.UniqueKey, string(jsonStrByteArray))
+	err = SetData(ctx, e.Distributed.UniqueKey, string(jsonStrByteArray))
 	if err != nil {
 		return fmt.Errorf("error in setting value in DB: %v", err.Error())
 	}
