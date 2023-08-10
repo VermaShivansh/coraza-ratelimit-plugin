@@ -38,8 +38,7 @@ type Ratelimit struct {
 	Action        string
 	Status        int // because coraza accepts 'int' in its interrupt struct
 	mutex         *sync.Mutex
-	UniqueKey     string // has to be same for all the instances which have to be synced together
-	Distributed   Distrubute
+	Distributed   Distributed
 }
 
 func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
@@ -61,13 +60,6 @@ func (e *Ratelimit) Init(rm rules.RuleMetadata, opts string) error {
 	e.mutex = &sync.Mutex{}
 
 	go e.memoryOptimizingService(rm.ID())
-
-	e.UniqueKey = fmt.Sprintf("coraza-%v", rm.ID())
-	fmt.Println(e.UniqueKey)
-
-	e.Distributed.Active = true
-	e.Distributed.SyncInterval = 6 * time.Second
-	e.Distributed.lastSync = 0
 
 	if e.Distributed.Active {
 		go e.syncService()
@@ -214,6 +206,18 @@ func (e *Ratelimit) parseConfig(config string) error {
 			}
 			if e.Status < 0 || e.Status > 500 {
 				return fmt.Errorf("status should be in range 0-500: received: %v ", value)
+			}
+		case "distribute_interval":
+			var interval int
+			if interval, err = strconv.Atoi(value); err != nil {
+				return fmt.Errorf("invalid distribute_interval integer value: %v", value)
+			}
+			if interval == 0 {
+				return errors.New("value 0 is not allowed for key 'distribute_interval'")
+			}
+			//initiate distribution
+			if err = e.initDistribute(time.Duration(interval)); err != nil {
+				return fmt.Errorf("error in initiating distribution: %v", err.Error())
 			}
 		default:
 			return fmt.Errorf("%v is not allowed", key)

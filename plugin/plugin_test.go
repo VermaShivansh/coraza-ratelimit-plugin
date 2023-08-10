@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -172,9 +173,9 @@ func TestMultiZone(t *testing.T) {
 }
 
 func TestDistributedSystemsSupport(t *testing.T) {
-
+	os.Setenv("coraza_ratelimit_key", "abcdefgh12345678")
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=fixed&events=5&window=6&interval=10&action=deny&status=403, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1,setenv:u_key=abc, ratelimit:zone[]=fixed&events=5&window=6&interval=10&action=deny&status=403&distribute_interval=5, pass, status:200"`
 
 	//client server which will request to running WAF instances
 	clientSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))

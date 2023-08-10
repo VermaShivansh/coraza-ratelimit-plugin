@@ -83,4 +83,7 @@ var ConfigTestCases = []ConfigTestCase{
 	{ID: 25,
 		Config:   "zone[]=%{REQUEST_HEADERS.host}=&events=100=&window2", // irregular use of =
 		Expected: false},
+	{ID: 26,
+		Config:   "zone[]=%{REQUEST_HEADERS.host}&events=100&window=2&interval=2&action=drop&status=0&distribute_interval=0", // distribute interval cannot be 0
+		Expected: false},
 }
