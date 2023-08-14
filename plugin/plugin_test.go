@@ -42,6 +42,9 @@ func TestConfigurationParser(t *testing.T) {
 func TestLogicOfRateLimit(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
+	//total requests || 200x5
+	N := 1000
+
 	// get an instance of http test server with waf
 	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=200&window=1&interval=2&action=deny&status=403, pass, status:200"`
 
@@ -54,6 +57,13 @@ func TestLogicOfRateLimit(t *testing.T) {
 
 	j := 0
 
+	type Error struct {
+		Index int
+		Err   error
+	}
+
+	errChan := make(chan *Error, N)
+
 	for {
 		<-ticker.C
 
@@ -64,8 +74,9 @@ func TestLogicOfRateLimit(t *testing.T) {
 				defer wg.Done()
 				for j := 0; j < 1; j++ {
 					resp, err := svr.Client().Get(requestURL)
-					if err != nil {
-						t.Errorf("Error in %v, expected: %v, got: %v", i, 200, err.Error())
+					errChan <- &Error{
+						Index: i,
+						Err:   err,
 					}
 					assert.Equal(t, 200, resp.StatusCode)
 				}
@@ -81,6 +92,14 @@ func TestLogicOfRateLimit(t *testing.T) {
 
 	}
 
+	// wait for all N to finish
+	for i := 0; i < N; i++ {
+		res := <-errChan
+		if res.Err != nil {
+			t.Fatal((*res).Err.Error())
+		}
+	}
+
 	wg.Wait()
 }
 
@@ -88,6 +107,9 @@ func TestLogicOfRateLimit(t *testing.T) {
 // currently it is taking 625ms to execute 1000req/sec
 func TestStressOfRateLimit(t *testing.T) {
 	wg := &sync.WaitGroup{}
+
+	// number of requests
+	N := 1000
 
 	// get an instance of http test server with waf
 	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=300&window=1&interval=2&action=deny&status=429, pass, status:200"`
@@ -99,6 +121,13 @@ func TestStressOfRateLimit(t *testing.T) {
 
 	currentTime := time.Now().UnixMilli()
 
+	type Error struct {
+		Index int
+		Err   error
+	}
+
+	errChan := make(chan *Error, N)
+
 	for i := 0; i < 1000; i++ {
 
 		wg.Add(1)
@@ -106,12 +135,20 @@ func TestStressOfRateLimit(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < 1; j++ {
 				_, err := svr.Client().Get(requestURL)
-				if err != nil {
-					t.Errorf("Error in %v, expected: %v, got: %v", i, 200, err.Error())
+				errChan <- &Error{
+					Index: i,
+					Err:   err,
 				}
-				// assert.Equal(t, 200, resp.StatusCode)
 			}
 		}(wg, i)
+	}
+
+	// wait for all N to finish
+	for i := 0; i < N; i++ {
+		res := <-errChan
+		if res.Err != nil {
+			t.Fatal(res.Err.Error())
+		}
 	}
 
 	wg.Wait()
@@ -131,6 +168,8 @@ func TestStressOfRateLimit(t *testing.T) {
 func TestMultiZone(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
+	N := 48
+
 	results := []string{}
 	mut := &sync.Mutex{}
 	initialTime := time.Now()
@@ -143,16 +182,20 @@ func TestMultiZone(t *testing.T) {
 
 	failedReqs := 0
 
+	type Error struct {
+		Index int
+		Err   error
+	}
+
+	errChan := make(chan *Error, N)
+
 	for i := 0; i < 48; i++ {
 		wg.Add(1)
 		requestURL := fmt.Sprintf("%v?id=1&category=%v", svr.URL, i%4)
 		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
 			defer wg.Done()
 			resp, err := svr.Client().Get(requestURL)
-			if err != nil {
-				fmt.Printf("Error: %s", err)
-				// t.Errorf("Error in %v, expected: %v, got: %v", test.url, test.expectedStatusCode, err.Error())
-			}
+			errChan <- &Error{Index: i, Err: err}
 			if resp.StatusCode == 200 {
 				mut.Lock()
 				results = append(results, fmt.Sprintf("PASS: i=%v, time=%v", i, time.Since(initialTime).Milliseconds()))
@@ -165,6 +208,15 @@ func TestMultiZone(t *testing.T) {
 			}
 		}(wg, mut, i)
 	}
+
+	// wait for all N to finish
+	for i := 0; i < N; i++ {
+		res := <-errChan
+		if res.Err != nil {
+			t.Fatal(res.Err.Error())
+		}
+	}
+
 	wg.Wait()
 
 	prettyPrint(results)
