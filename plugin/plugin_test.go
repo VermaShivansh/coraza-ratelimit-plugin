@@ -52,7 +52,7 @@ func TestLogicOfRateLimit(t *testing.T) {
 
 	ticker := time.NewTicker(time.Second * 1)
 
-	i := 0
+	j := 0
 
 	for {
 		<-ticker.C
@@ -72,9 +72,9 @@ func TestLogicOfRateLimit(t *testing.T) {
 			}(wg, i)
 		}
 
-		i++
+		j++
 
-		if i == 5 {
+		if j == 5 {
 			ticker.Stop()
 			break
 		}
