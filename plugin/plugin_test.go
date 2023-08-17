@@ -37,13 +37,14 @@ func TestConfigurationParser(t *testing.T) {
 	fmt.Println("Ratelimit configuration check passed")
 }
 
-// sends 200 requests every second to server. With Config maxEvents=200, sweepInterval=2, window=1
-// all requests should give 200
+// sends 200 requests every second to server 5 times = 1000reqs. With Config maxEvents=200, sweepInterval=2, window=1
+// all requests should give 200 status code
 func TestLogicOfRateLimit(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	//total requests || 200x5
 	N := 1000
+	M := 5
 
 	// get an instance of http test server with waf
 	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=200&window=1&interval=2&action=deny&status=403, pass, status:200"`
@@ -85,7 +86,7 @@ func TestLogicOfRateLimit(t *testing.T) {
 
 		j++
 
-		if j == 5 {
+		if j == M {
 			ticker.Stop()
 			break
 		}
@@ -189,7 +190,7 @@ func TestMultiZone(t *testing.T) {
 
 	errChan := make(chan *Error, N)
 
-	for i := 0; i < 48; i++ {
+	for i := 0; i < N; i++ {
 		wg.Add(1)
 		requestURL := fmt.Sprintf("%v?id=1&category=%v", svr.URL, i%4)
 		go func(wg *sync.WaitGroup, mut *sync.Mutex, i int) {
@@ -227,7 +228,7 @@ func TestMultiZone(t *testing.T) {
 func TestDistributedSystemsSupport(t *testing.T) {
 	os.Setenv("coraza_ratelimit_key", "abcdefgh12345678")
 	// get an instance of http test server with waf
-	conf := `SecRule ARGS:id "@eq 1" "id:1,setenv:u_key=abc, ratelimit:zone[]=fixed&events=5&window=6&interval=10&action=deny&status=403&distribute_interval=5, pass, status:200"`
+	conf := `SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=fixed&events=5&window=6&interval=10&action=deny&status=403&distribute_interval=5, pass, status:200"`
 
 	//client server which will request to running WAF instances
 	clientSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))

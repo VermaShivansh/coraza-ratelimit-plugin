@@ -45,11 +45,11 @@ func (e *Ratelimit) initDistribute(syncInterval time.Duration) error {
 }
 
 // it uses syncFunc declared below
-/*
-syncFunc does the core sync stuff
-it is ran initially to get the initial data from redis
-and runs syncFunc after every syncInterval
-*/
+
+// syncFunc does the core sync stuff
+// it is ran initially to get the initial data from redis
+// and runs syncFunc after every syncInterval
+
 func (e *Ratelimit) syncService() {
 
 	//populate initial values of ZoneEvents
@@ -67,13 +67,12 @@ func (e *Ratelimit) syncService() {
 
 }
 
-/*
-1. Obtain lock on redis for unique key (same throughout all the instances of application)
-2. Fetch ratelimit data
-3. update the ratelimit data with events of all timestamps>lastSync and timestamp > (currentTime-e.Window) (suppose syncing is done every minute but window is of 5seconds then we should not compute events of timestamp from 0th second - 55th second as they are redundant.)
-4. Set the updated states in Redis
-5. Release the lock
-*/
+// 1. Obtain lock on redis for unique key (same throughout all the instances of application)
+// 2. Fetch ratelimit data
+// 3. update the ratelimit data with events of all timestamps>lastSync and timestamp > (currentTime-e.Window) (suppose syncing is done every minute but window is of 5seconds then we should not compute events of timestamp from 0th second - 55th second as they are redundant.)
+// 4. Set the updated states in Redis
+// 5. Release the lock
+
 func syncFunc(e *Ratelimit) error {
 	//read from the redis
 	fmt.Println("Syncing with Redis")
