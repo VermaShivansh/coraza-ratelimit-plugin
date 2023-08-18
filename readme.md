@@ -120,7 +120,6 @@ You can find an example implementation [here](https://github.com/VermaShivansh/c
 * The application stores the events in memory and uses `interval` value for memory cleaning. It is recommended to neither set the value too high (60 seconds) nor too low (5 second as it will be overkill). Specific value highly depends upon the kind of traffic you are dealing with. Also it is advised to keep `interval` value more than `window`, as if `window` is 10 seconds and `interval` is 5 seconds there will be nothing to clean from memory 2 times.  
 * Before you enforce rate limiting, you can have a period of observation and look at the max RPS of your different customer profiles. You might then typically set the rate limits at some reasonable margin higher than that max, assuming that any meaningful spike beyond this is probably not intentional.
 * When using distributed mode, it is possible that instance might receive 2-3% of max requests than intended. This is because we don't stop processing incoming requests while the instance is syncing with redis. The downside to this approach is your backend may receive a little more traffic than was strictly defined, however distributed ratelimit will be eventually consistent. In most cases, this is probably the right call to offer the best experience for your API overall.
-
 ## Under the hood
 
 ### Algorithm
