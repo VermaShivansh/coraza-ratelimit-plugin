@@ -59,7 +59,6 @@ func main() {
 
 Manipulate Seclang configuration inside **'./default.conf'**
 
-**Before moving to examples, it is recommend to go through [glossary]() of plugin once.**
 
 ### 1. Configuration for Single Zone Ratelimit implementation
 
@@ -84,7 +83,7 @@ SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.authorization}
 You can enable distributed ratelimit accross different instances of your application. <br/>
 **NOTE** <br/>
 * You must have **same ratelimit configuration** throughout the different servers.
-* Your application must have a **value set for environment variable `coraza_ratelimit_key`**. Example `os.Setenv("coraza_ratelimit_key", "my_unique_key")`. It is because instances with same unique key are synced together.
+* Your application must have a **value set for environment variable `coraza_ratelimit_key`**. Example `os.Setenv("coraza_ratelimit_key", "my_unique_key")`. It is because instances with same unique key are synced together. In order to promote the uniqueness of your key, we have set following conditions.
 
 
 ## API Reference
@@ -98,27 +97,34 @@ You can enable distributed ratelimit accross different instances of your applica
 | Parameter | Type     | Value | Description                |
 | :-------- | :------- | :-----| :------------------- |
 | `zone[]` | `string` | **Required** | This can be either a [macro]() for dynamic ratelimit application or a fixed string. |
-|  `events` | `integer`  | **Required** | Number of requests allowed in specified window.  |
+|  `events` | `integer`  | **Required** | Number of requests allowed in specified window. 1 event= 1 request  |
 | `window` | `integer` | **Required**| Window in seconds in which max requests are allowed. Value should be greater than 0. |
 | `interval` | `integer` | **Optional** (default: 5) | Time interval in seconds after which memory cleaning is attempted. |
 | `action` | `enum` | **Optional** (default: 'drop') | Action to execute when ratelimit has been exceeded. Action is one of **'deny','drop' or 'redirect'**.|
 | `status` | `integer` | **Optional** (default: 429) | HTTP Response status to be sent along with action when ratelimit has been reached. |
 | `distribute_interval` | `integer` | **Optional** | Following field enables distributed ratelimit and syncs among the instances every given interval. By default it is not set (hence off). It uses the environment value for the field `coraza_ratelimit_key`. |
 
+Failing to follow any of the above reference will result in an error ( which are very easily understandable ) while parsing the SecRule.
 
 
-## Glossary
+
 ## Demo
 
-Insert gif or link to demo
+You can find an example implementation [here](https://github.com/VermaShivansh/coraza-ratelimit-plugin/tree/master/example_app).
 
 
 ## Recommendations and mistakes to avoid
 
-What optimizations did you make in your code? E.g. refactors, performance improvements, accessibility
-
+* Understanding and knowing all the [macros](https://coraza.io/docs/seclang/syntax/#macro-expansion) will be highly helpful for setting up dynamic rate limit based upon request data (headers, request body, args and etc).
+* If you want to completely restrict access to a route for matching rule, set `events`=0.
+* The application stores the events in memory and uses `interval` value for memory cleaning. It is recommended to neither set the value too high (60 seconds) nor too low (5 second as it will be overkill). Specific value highly depends upon the kind of traffic you are dealing with. Also it is advised to keep `interval` value more than `window`, as if `window` is 10 seconds and `interval` is 5 seconds there will be nothing to clean from memory 2 times.  
+* Before you enforce rate limiting, you can have a period of observation and look at the max RPS of your different customer profiles. You might then typically set the rate limits at some reasonable margin higher than that max, assuming that any meaningful spike beyond this is probably not intentional.
+* When using distributed mode, it is possible that instance might receive 2-3% of max requests than intended. This is because we don't stop processing incoming requests while the instance is syncing with redis. The downside to this approach is your backend may receive a little more traffic than was strictly defined, however distributed ratelimit will be eventually consistent. In most cases, this is probably the right call to offer the best experience for your API overall.
 
 ## Under the hood
 
-What did you learn while building this project? What challenges did you face and how did you overcome them?
+### Algorithm
 
+### Distributed Ratelimit
+
+### Benchmarks
