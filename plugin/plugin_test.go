@@ -1,4 +1,3 @@
-//go:generate tinygo build -o ./testdata/hello-world.wasm -target=wasi ./testdata/hello-world/main.go
 package plugin
 
 import (
