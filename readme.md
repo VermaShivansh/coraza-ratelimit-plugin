@@ -123,7 +123,21 @@ You can find an example implementation [here](https://github.com/VermaShivansh/c
 ## Under the hood
 
 ### Algorithm
+This article briefly explains the common rate limiting algorithms. The most optimized one is **sliding window** and the same is implemented in the plugin where the events occured are stored as a counter at that timestamp. These counters are aggregated when a new event occurs to check whether to allow or deny. There is a memory cleaning go routine which runs every `interval` to remove the events which are beyond the window in consideration. 
 
 ### Distributed Ratelimit
+Suppose you have 10 instances spread around the world on different regions of the world and you want to sync their ratelimit, then you must have same ratelimit configuration in all those 10 instances and should have an env set with keyname `coraza_ratelimit_key`. This value has few checks. The key must have 
+ * minimum 1 letter
+ * minimum 1 number
+ * minimum 16 and maximum 30 alphanumeric characters
+This is done to promote the uniqueness of your ratelimit key. If it is small it might match with other implementors and cause confusion while syncing of instances, or a potential attacker might meddle with the data in redis if he finds out your key.
+Instances with same unique key are synced together.
+Whenever an instance starts it fetches the current events from Redis to have initial events ready. While one instance is syncing with redis, a lock is acquired for that key:value pair in redis so as to avoid the RW problems and is released once the syncing is done.
 
 ### Benchmarks
+According to syncing flow there is a go routine that syncs every `distribute_inteval` . This sync involves 1) obtaining a lock on a **key:value** pair on Redis, 2) fetching from Redis, updating in memory data of events, 3) setting in the database, 4) and releasing of lock. Basically 4 interactions of DB in 1 sync cycle.
+* With Redis running on the local machine. Each database interaction took almost 1.5-2ms, causing an average of 8ms of lock equipment on *key:value* pair of Redis.
+* With Redis running on a docker container inside an EC2 instance in **eu-west-2 region** and **requests were from ap-south-1 region** took approx 150ms (requests were made from India), causing avg 600ms (150ms * 4) of lock equipment. 
+* This benchmark is **subject to the internet connection** which was used while running benchmarks, also this will be reduced as the redis will be deployed in multiple regions.
+* Suppose sync cycle of 2 of your instance say A and B have been synced together,i.e A and B instances start syncing at same time but both can't sync together so one of them will have to wait, in this scenario the other instance might experience a delay in sync with redis, as lock will be occupied by one of the instance while other will have to wait until the lock is released. However this won't effect the normal in memory functionality of the ratelimit. This is where events might rise a little more than the safe limit.
+
