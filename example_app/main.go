@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// it is recommended to use dotenv or some other package to store envs
-	os.Setenv("coraza_ratelimit_key", "this_key_is_unique_and_same_for_all_my_instances")
+	os.Setenv("coraza_ratelimit_key", "this_key_is_unique_and_same_for_all_my_instances_123")
 	os.Setenv("PORT", ":8080")
 
 	// First we initialize waf
