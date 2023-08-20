@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -75,7 +74,7 @@ func (e *Ratelimit) syncService() {
 
 func syncFunc(e *Ratelimit) error {
 	//read from the redis
-	fmt.Println("Syncing with Redis")
+	// log.Println("Syncing with Redis")
 
 	// currentTimeMilli := time.Now().UnixMilli()
 	//Obtain Redis lock
@@ -135,7 +134,7 @@ func syncFunc(e *Ratelimit) error {
 	syncedZones = e.Zones
 	e.mutex.Unlock()
 
-	log.Println("syncedZones", syncedZones)
+	// log.Println("syncedZones", syncedZones)
 
 	jsonStrByteArray, err := sonic.Marshal(syncedZones)
 	if err != nil {
