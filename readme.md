@@ -65,15 +65,15 @@ Manipulate Seclang configuration inside **'./default.conf'**
 ```seclang
 SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&events=200&window=1, pass, status:200"
 ```
-Above configuration allows ***200 requests(events=200)***, ***per second(window=1)***, ***per different host(zone[]=%{REQUEST_HEADERS.host})***. Once the requests are exhausted the requests will be **denied with status 429 by default**, See [reference]() for customizations.
+Above configuration allows ***200 requests(events=200)***, ***per second(window=1)***, ***per different host ( zone[]=%{REQUEST_HEADERS.host} )***. Once the requests are exhausted the requests will be **denied with status 429 by default**, See [reference]() for customizations.
 
 ### 2. Configuration for Multizone Zone Ratelimit implementation
 
 ```seclang
 SecRule ARGS:id "@eq 1" "id:1, ratelimit:zone[]=%{REQUEST_HEADERS.host}&zone[]=%{REQUEST_HEADERS.authorization}&events=200&window=1, pass, status:200"
 ```
-Above configuration allows 200 requests, per second, ***per different zone(zone[]=%{REQUEST_HEADERS.host}&zone[]=%{REQUEST_HEADERS.host})***. <br/>
-Zones work in **OR** manner i.e if 200 requests have been received with **same  authorization header value** but from **2 different host**(100 from HOST A, 100 from HOST B) then ratelimit should fail according to our cap of 200 requests, **however HOST A and HOST B still have 100 requests remaining** therefore requests won't be rate limited. 
+Above configuration allows 200 requests, per second, ***per different zone ( zone[]=%{REQUEST_HEADERS.host}&zone[]=%{REQUEST_HEADERS.host} )***. <br/>
+Zones work in **OR** manner i.e if 200 requests have been received with **same  authorization header value** but from **2 different host** ( 100 from HOST A, 100 from HOST B ) then ratelimit should fail according to our cap of 200 requests, **however HOST A and HOST B still have 100 requests remaining** therefore requests won't be rate limited. 
 
 ### 3. Configuration for Distributed Ratelimit implementation
 
