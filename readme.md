@@ -5,7 +5,7 @@
 
 ## Overview
 
-**Ratelimit Plugin** for [**Coraza Web Application Firewall**](https://github.com/corazawaf/coraza#----coraza---web-application-firewall), aims to protect against brute Force attacks, DOS, DDOS attacks and prevent your servers from resource exhaustion. The plugin supports rate limitation on distributed servers as well. This plugin was started as a part of GSoC 2023 under the mentorship of [José Carlos Chávez](https://github.com/jcchavezs).
+**Ratelimit Plugin** for [**Coraza Web Application Firewall**](https://github.com/corazawaf/coraza#----coraza---web-application-firewall), aims to protect against brute Force attacks, DOS, DDOS attacks and prevent your servers from resource exhaustion. The plugin supports rate limitation on distributed servers as well. This plugin is a part of GSoC 2023 project under the mentorship of [José Carlos Chávez](https://github.com/jcchavezs).
 
 
 ## Installation
