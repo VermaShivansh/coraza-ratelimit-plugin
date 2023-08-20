@@ -61,10 +61,13 @@ func NewHttpTestWafServer(conf string) *httptest.Server {
 // checks if a string has
 // minimum 1 letter
 // mimimum 1 number
-// minimum 16 letters
+// minimum 16 length
 func CheckRatelimitDistributeKey(input string) error {
-	if len(input) < 16 {
-		return errors.New("distribute key must have minimum 16 alphanumeric characters")
+	MAX_LENGTH := 30
+	MINIMUM_LENGTH := 16
+
+	if len(input) < MINIMUM_LENGTH || len(input) > MAX_LENGTH {
+		return errors.New("distribute key must have minimum 16 alphanumeric characters and maximum of 30 alphanumeric characters")
 	}
 
 	hasNumber := false
