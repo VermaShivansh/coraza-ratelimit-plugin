@@ -13,7 +13,7 @@
 Add the plugin module to your application
 
 ```bash
-  go get github.com/vermaShivansh/coraza-ratelimit-plugin
+  go get -u github.com/vermaShivansh/coraza-ratelimit-plugin
 ```
 
 ## Usage/Examples
